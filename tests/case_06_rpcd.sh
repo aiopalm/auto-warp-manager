@@ -6,8 +6,13 @@ PLUGIN="$ROOT/luci-app-warp-autocheck/files/usr/libexec/rpcd/luci.warp-autocheck
 ACL="$ROOT/luci-app-warp-autocheck/files/usr/share/rpcd/acl.d/luci-app-warp-autocheck.json"
 MENU="$ROOT/luci-app-warp-autocheck/files/usr/share/luci/menu.d/luci-app-warp-autocheck.json"
 
-# (a) синтаксис и JSON
+# (a) синтаксис и JSON + nohup не используется (в busybox его нет)
 sh -n "$PLUGIN" && ok "rpcd: sh -n" || fail "rpcd: sh -n"
+if grep -q "nohup" "$PLUGIN"; then
+	fail "rpcd: nohup не используется"
+else
+	ok "rpcd: nohup не используется"
+fi
 python3 -m json.tool "$ACL" >/dev/null && ok "rpcd: ACL JSON валиден" || fail "rpcd: ACL JSON"
 python3 -m json.tool "$MENU" >/dev/null && ok "rpcd: menu JSON валиден" || fail "rpcd: menu JSON"
 

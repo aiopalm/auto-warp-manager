@@ -30,14 +30,24 @@ call_method() {
 			if [ -f /tmp/warp-autocheck.lock ] && kill -0 "$(cat /tmp/warp-autocheck.lock 2>/dev/null)" 2>/dev/null; then
 				echo '{"error":"операция уже выполняется"}'; return 1
 			fi
-			nohup "$BACKEND" check >/tmp/warp-autocheck.job 2>&1 &
+			# утилита отсоединения от группы процесса в busybox бывает не вшита —
+			# используем setsid, если есть, иначе просто фоновый запуск
+			if command -v setsid >/dev/null 2>&1; then
+				setsid "$BACKEND" check >/tmp/warp-autocheck.job 2>&1 &
+			else
+				"$BACKEND" check >/tmp/warp-autocheck.job 2>&1 &
+			fi
 			echo '{"ok":true}'
 			;;
 		regen)
 			if [ -f /tmp/warp-autocheck.lock ] && kill -0 "$(cat /tmp/warp-autocheck.lock 2>/dev/null)" 2>/dev/null; then
 				echo '{"error":"операция уже выполняется"}'; return 1
 			fi
-			nohup "$BACKEND" regen >/tmp/warp-autocheck.job 2>&1 &
+			if command -v setsid >/dev/null 2>&1; then
+				setsid "$BACKEND" regen >/tmp/warp-autocheck.job 2>&1 &
+			else
+				"$BACKEND" regen >/tmp/warp-autocheck.job 2>&1 &
+			fi
 			echo '{"ok":true}'
 			;;
 		get_settings) "$BACKEND" get_settings ;;
