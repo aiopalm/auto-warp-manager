@@ -14,12 +14,15 @@ var pollTimer = null;
 var STYLES_ID = 'wac-styles';
 
 var CSS = [
-	'.wac-wrap { max-width: 860px; }',
+	'.wac-wrap { width: 100%; }',
+	'.wac-grid { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 14px; align-items: start; }',
+	'.wac-col { min-width: 0 }',
+	'@media (max-width: 900px) { .wac-grid { grid-template-columns: 1fr } }',
 	'.wac-card { background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.25); border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; }',
 	'.wac-card h3 { margin: 0 0 10px 0; font-size: 1.05rem; }',
 	'.wac-row { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,.18); }',
 	'.wac-row:last-child { border-bottom: 0 }',
-	'.wac-key { width: 220px; min-width: 160px; opacity: .65; flex-shrink: 0 }',
+	'.wac-key { width: 220px; min-width: 140px; opacity: .65; flex-shrink: 0 }',
 	'.wac-val { word-break: break-word; overflow-wrap: anywhere }',
 	'.wac-badge { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; color: #fff; background: #888; }',
 	'.wac-badge.wac-ok { background: #2e9e44 }',
@@ -68,11 +71,15 @@ function resultBadge(res) {
 	return E('span', { 'class': 'wac-badge ' + m[0] }, m[1]);
 }
 
-function row(key, val) {
-	var valChildren = Array.prototype.slice.call(arguments, 1);
+function row(key) {
+	var flat = [];
+	for (var i = 1; i < arguments.length; i++) {
+		var a = arguments[i];
+		if (Array.isArray(a)) { flat = flat.concat(a); } else { flat.push(a); }
+	}
 	return E('div', { 'class': 'wac-row' }, [
 		E('div', { 'class': 'wac-key' }, key),
-		E('div', { 'class': 'wac-val' }, valChildren)
+		E('div', { 'class': 'wac-val' }, flat)
 	]);
 }
 
@@ -106,15 +113,16 @@ return view.extend({
 			return wrap;
 		}
 
-		this._statusCard = this.renderStatus(status);
 		this._actionsCard = this.renderActions(status);
 		this._settingsCard = this.renderSettings(settings);
+		this._statusCard = this.renderStatus(status);
 		this._logCard = this.renderLog();
 
-		wrap.appendChild(this._statusCard);
+		/* действия — во всю ширину; ниже две колонки: слева настройки, справа статус+лог */
 		wrap.appendChild(this._actionsCard);
-		wrap.appendChild(this._settingsCard);
-		wrap.appendChild(this._logCard);
+		var leftCol = E('div', { 'class': 'wac-col' }, this._settingsCard);
+		var rightCol = E('div', { 'class': 'wac-col' }, [this._statusCard, this._logCard]);
+		wrap.appendChild(E('div', { 'class': 'wac-grid' }, [leftCol, rightCol]));
 
 		this.startPolling(status.running);
 		return wrap;

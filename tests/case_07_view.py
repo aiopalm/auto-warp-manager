@@ -67,6 +67,20 @@ if "replaceCard" in src and "liveUpdate" in src:
 else:
     fail("view: живое обновление карточек")
 
+# (g) раскладка: действия сверху во всю ширину, сетка две колонки (настройки слева, статус+лог справа)
+if "wac-grid" in src and "grid-template-columns" in src:
+    ok("view: сетка двух колонок")
+else:
+    fail("view: сетка двух колонок")
+if src.index("wrap.appendChild(this._actionsCard)") < src.index("'wac-grid' }, [leftCol"):
+    ok("view: действия над сеткой")
+else:
+    fail("view: действия над сеткой")
+if src.index("leftCol") < src.index("rightCol") and "leftCol" in src:
+    ok("view: настройки слева, статус справа")
+else:
+    fail("view: настройки слева, статус справа")
+
 failed = [c for c in checks if c[0] == "FAIL"]
 for st, msg in checks:
     print("  %s - %s" % (st, msg))
