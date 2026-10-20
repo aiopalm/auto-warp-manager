@@ -112,4 +112,43 @@ echo "$OUT" | grep -q '"result":"replaced"' && ok "regen: ключи через 
 grep -q "регистрируем через него" "$WAC_LOG_FILE" && ok "regen: лог туннельного пути" || fail "regen: лог туннельного пути"
 wac_teardown
 
+# (f) порядок масок как в ZM: стартуем с MIXOMO, а не с текущей I1 из WARP.conf (она и умерла)
+setup_regen
+printf '%s\nI1 = <b 0xAAAAAAAA>\n' "$OLD_CONF" > "$WAC_TEST_ROOT/WARP.conf"
+OUT=$(wac_run regen)
+echo "$OUT" | grep -q '"result":"replaced"' && ok "regen: маска — замена прошла" || fail "regen: маска ($OUT)"
+grep -qF "<b 0xce000000010897a2" "$WAC_TEST_ROOT/WARP.conf" && ok "regen: первой пробуется маска MIXOMO" || fail "regen: первой пробуется маска MIXOMO"
+grep -qF "0xAAAAAAAA" "$WAC_TEST_ROOT/WARP.conf" && fail "regen: старая I1 не выбрана" || ok "regen: старая I1 не выбрана"
+grep -q "порт 2408: открыт" "$WAC_LOG_FILE" && ok "regen: фаза портов в логе" || fail "regen: фаза портов в логе"
+wac_teardown
+
+# (g) авто-режим: трафика нигде нет (только рукопожатия) -> фолбэк не пишем, конфиг не тронут
+setup_regen
+printf '%s\n' "$OLD_CONF" > "$WAC_TEST_ROOT/WARP.conf"
+wac_curl_unset "$TRACE"
+wac_curl_unset "$TRACE2"
+OUT=$(wac_run regen auto)
+echo "$OUT" | grep -q '"result":"not-helped"' && ok "regen auto: без трафика — not-helped" || fail "regen auto: без трафика ($OUT)"
+grep -q "OLDCONFPRIVKEY" "$WAC_TEST_ROOT/WARP.conf" && ok "regen auto: конфиг не тронут" || fail "regen auto: конфиг не тронут"
+wac_teardown
+
+# (i) Cloudflare закрыт, внешний генератор выдал ключи -> replaced с его ключом
+setup_regen
+printf '%s\n' "$OLD_CONF" > "$WAC_TEST_ROOT/WARP.conf"
+wac_curl_unset "$CF_API"
+wac_curl_set "$EXT_GEN" '{"key":"EXTPRIVKEY=","config":{"peers":[{"public_key":"SRVPUBKEY="}],"interface":{"addresses":{"v4":"172.16.9.9","v6":"fd42::9"}}},"x":{"v4":"1.2.3.4","v6":"fd42::8"}}'
+OUT=$(wac_run regen)
+echo "$OUT" | grep -q '"result":"replaced"' && ok "regen: ключи от внешнего генератора" || fail "regen: внешний генератор ($OUT)"
+grep -q "EXTPRIVKEY" "$WAC_TEST_ROOT/WARP.conf" && ok "regen: приватный ключ внешнего генератора в конфиге" || fail "regen: ключ внешнего генератора"
+wac_teardown
+
+# (h) ручной режим: тот же сценарий -> записывается точка с рукопожатием (фолбэк как в ZM)
+setup_regen
+printf '%s\n' "$OLD_CONF" > "$WAC_TEST_ROOT/WARP.conf"
+wac_curl_unset "$TRACE"
+wac_curl_unset "$TRACE2"
+OUT=$(wac_run regen)
+grep -q "записываю точку с рукопожатием" "$WAC_LOG_FILE" && ok "regen manual: фолбэк handshake записан" || fail "regen manual: фолбэк handshake ($OUT)"
+wac_teardown
+
 summary

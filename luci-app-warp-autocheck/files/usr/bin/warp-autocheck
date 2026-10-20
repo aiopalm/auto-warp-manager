@@ -14,6 +14,7 @@ AWG_WARP_PEER="bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="
 RU_COLOS="DME SVX LED KJA REN OVB KZN AER VVO"
 AWG_TEST_HOSTS="162.159.192.1 188.114.97.1 188.114.96.3 162.159.193.2 162.159.195.2 188.114.98.2 188.114.99.2 8.6.112.2 8.34.70.2 8.34.146.2 8.39.125.2"
 AWG_TEST_PORTS="2408 500 4500 1701"
+AWG_CF_APIS="https://api.cloudflareclient.com/v0a4005/reg https://api.cloudflareclient.com/v0i1909051800/reg https://api.cloudflareclient.com/v0a2158/reg https://api.cloudflareclient.com/v0a1922/reg"
 AWG_BOOT_PRIV="4OnO86dDLpqJ2U10ODwX3tarx6xlRGLfkmbSBtMgaHg="
 AWG_BOOT_IP="172.16.0.3"
 AWG_CF_VER="a-6.11-2223"
@@ -40,7 +41,6 @@ ST_WARP_PORTS_EXT="854 859 864 878 880 890 891 894 903 908 928 934 939 942 943 9
 AWG_TEST_IF="wac-test"
 AWG_TRY_WAIT=8
 AWG_API="https://api.cloudflareclient.com/v0a4005/reg"
-WARP_PRIMARY="$MIXOMO_WARP_PRIMARY"
 AWG_RUN_DIR="${WAC_RUN_DIR:-/tmp/warp-autocheck.run}"
 
 log() {
@@ -184,7 +184,7 @@ _wac_probe() { # iface -> "loss rtt torn"
 		END {
 			if (!have) loss = 100
 			torn = (got > 0 && tx > 0 && tx - 1 - hi >= t) ? 1 : 0
-			printf "%d %d %d\n", loss, (got > 0 && rtt > 0 ? rtt : 99999), torn
+			printf "%d %d %d\n", loss, (got > 0 ? (rtt > 0 ? rtt : 1) : 99999), torn
 		}'
 }
 
@@ -300,7 +300,7 @@ _i1_sip() {
 AWG_NO_I1=0
 try_conf() { # dev priv ip endpoint mask [peer] -> 0 hs ok / 1 нет / 2 модуль не загружен
 	local dev="$1" conf="$AWG_RUN_DIR/try.conf" hs i=0 i1="$5" peer="${6:-$AWG_WARP_PEER}"
-	AWG_NO_I1=0
+	[ "$AWG_NO_I1" = 1 ] && i1=""
 	ip link del "$dev" >/dev/null 2>&1
 	ip link add dev "$dev" type amneziawg >/dev/null 2>&1 || return 2
 	ip link set "$dev" mtu 1280 >/dev/null 2>&1
@@ -330,7 +330,7 @@ try_conf() { # dev priv ip endpoint mask [peer] -> 0 hs ok / 1 нет / 2 мод
 
 try_down() { ip link del "$1" >/dev/null 2>&1; }
 
-_cf_api_ip() { # [curl-args] -> IP api.cloudflareclient.com через DoH (обходит DNS-подмену провайдера)
+_cf_api_ip() { # [iface] -> IP api.cloudflareclient.com через DoH (обходит DNS-подмену провайдера)
 	local j ip ifargs=""
 	[ -n "$1" ] && ifargs="--interface $1"
 	j=$(curl -s $ifargs --connect-timeout 4 --max-time 8 -H 'accept: application/dns-json' "https://1.1.1.1/dns-query?name=api.cloudflareclient.com&type=A" 2>/dev/null)
@@ -338,58 +338,63 @@ _cf_api_ip() { # [curl-args] -> IP api.cloudflareclient.com через DoH (об
 	[ -n "$ip" ] && echo "$ip"
 }
 
-_cf_api_ok() { # [curl-args] -> код не 000? (с DoH-resolve против DNS-подмены)
-	local ip ipargs=""
-	ip=$(_cf_api_ip "$@") && ipargs="--resolve api.cloudflareclient.com:443:$ip"
-	local code
-	code=$(curl -s --connect-timeout 5 --max-time 8 "$@" $ipargs -o /dev/null -w '%{http_code}' "$AWG_API/" 2>/dev/null)
+_cf_api_ok() { # [iface] -> API отвечает (с DoH-resolve против DNS-подмены)
+	local ip code ifargs="" ipargs=""
+	[ -n "$1" ] && ifargs="--interface $1"
+	ip=$(_cf_api_ip "$1") && ipargs="--resolve api.cloudflareclient.com:443:$ip"
+	code=$(curl -s $ifargs --connect-timeout 5 --max-time 8 $ipargs -o /dev/null -w '%{http_code}' "$AWG_API/" 2>/dev/null)
 	[ -n "$code" ] && [ "$code" != "000" ]
 }
 
-keys_register() { # [curl-args] -> G_PRIV/G_PEER/G_V4/G_V6
-	local reg="$AWG_RUN_DIR/reg.$$" api code id tok
-	local K_PRIV K_PUB
+cf_register() { # [iface] -> G_PEER/G_V4/G_V6, ключ выдан Cloudflare (ключ создан на роутере)
+	local reg="$AWG_RUN_DIR/reg.$$" api code id tok host pre ip ipargs="" ifargs="" dead=""
+	[ -n "$1" ] && ifargs="--interface $1"
 	mkdir -p "$AWG_RUN_DIR"
-	K_PRIV=$(awg genkey 2>/dev/null)
-	[ -n "$K_PRIV" ] || { log "нет утилиты awg"; return 1; }
-	K_PUB=$(printf '%s' "$K_PRIV" | awg pubkey 2>/dev/null)
-	[ -n "$K_PUB" ] || { log "awg pubkey не сработал"; return 1; }
-	G_PRIV="$K_PRIV"; G_PUB="$K_PUB"
-
-	# 1) Cloudflare API напрямую (или через переданные curl-args); IP — через DoH, против DNS-подмены
-	local ipargs=""
-	ip=$(_cf_api_ip "$@") && ipargs="--resolve api.cloudflareclient.com:443:$ip"
+	ip=$(_cf_api_ip "$1") && ipargs="--resolve api.cloudflareclient.com:443:$ip"
 	[ -n "$ipargs" ] && log "API: IP получен через DoH, идём напрямую на него"
-	rm -f "$reg"
-	code=$(curl -s --connect-timeout 6 --max-time 25 "$@" $ipargs -X POST \
-		-H 'Content-Type: application/json' -H "User-Agent: okhttp/3.12.1" -H "CF-Client-Version: $AWG_CF_VER" -H 'Accept-Encoding: identity' \
-		-d "{\"key\":\"$G_PUB\",\"install_id\":\"\",\"fcm_token\":\"\",\"tos\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"type\":\"Android\",\"model\":\"\",\"locale\":\"en_US\"}" \
-		-o "$reg" -w '%{http_code}' "$AWG_API" 2>/dev/null)
-	case "$code" in
-		200|201)
-			id=$(jsonfilter -i "$reg" -e '@.result.id' 2>/dev/null)
-			tok=$(jsonfilter -i "$reg" -e '@.result.token' 2>/dev/null)
-			G_PEER=$(jsonfilter -i "$reg" -e '@.result.config.peers[0].public_key' 2>/dev/null)
-			G_V4=$(jsonfilter -i "$reg" -e '@.result.config.interface.addresses.v4' 2>/dev/null)
-			G_V6=$(jsonfilter -i "$reg" -e '@.result.config.interface.addresses.v6' 2>/dev/null)
+	for api in $AWG_CF_APIS; do
+		host="${api#https://}"; host="${host%%/*}"
+		case " $dead " in *" $host "*) continue ;; esac
+		rm -f "$reg"
+		code=$(curl -s $ifargs --connect-timeout 6 --max-time 25 $ipargs -X POST \
+			-H 'Content-Type: application/json' -H "User-Agent: okhttp/3.12.1" -H "CF-Client-Version: $AWG_CF_VER" -H 'Accept-Encoding: identity' \
+			-d "{\"key\":\"$G_PUB\",\"install_id\":\"\",\"fcm_token\":\"\",\"tos\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"type\":\"Android\",\"model\":\"\",\"locale\":\"en_US\"}" \
+			-o "$reg" -w '%{http_code}' "$api" 2>/dev/null)
+		case "$code" in
+			200|201) ;;
+			''|000) log "Cloudflare $host: нет связи"; dead="$dead $host"; continue ;;
+			*) log "Cloudflare $host: ответ $code"; continue ;;
+		esac
+		G_PEER=""; G_V4=""; G_V6=""; id=""; tok=""
+		for pre in '@.result' '@'; do
+			G_PEER="$(jsonfilter -i "$reg" -e "$pre.config.peers[0].public_key" 2>/dev/null)"
+			[ -n "$G_PEER" ] || continue
+			G_V4="$(jsonfilter -i "$reg" -e "$pre.config.interface.addresses.v4" 2>/dev/null)"
+			G_V6="$(jsonfilter -i "$reg" -e "$pre.config.interface.addresses.v6" 2>/dev/null)"
+			id="$(jsonfilter -i "$reg" -e "$pre.id" 2>/dev/null)"; tok="$(jsonfilter -i "$reg" -e "$pre.token" 2>/dev/null)"
+			break
+		done
+		if [ -n "$G_PEER" ] && [ -n "$G_V4" ]; then
 			if [ -n "$id" ] && [ -n "$tok" ]; then
-				code=$(curl -s --connect-timeout 6 --max-time 15 "$@" $ipargs -X PATCH \
-					-H 'Content-Type: application/json' -H "User-Agent: okhttp/3.12.1" -H "CF-Client-Version: $AWG_CF_VER" -H "Authorization: Bearer $tok" \
-					-d '{"warp_enabled":true}' -o /dev/null -w '%{http_code}' "$AWG_API/$id" 2>/dev/null)
+				code=$(curl -s $ifargs --connect-timeout 6 --max-time 15 $ipargs -X PATCH \
+					-H 'Content-Type: application/json' -H "User-Agent: okhttp/3.12.1" -H "CF-Client-Version: $AWG_CF_VER" -H 'Accept-Encoding: identity' -H "Authorization: Bearer $tok" \
+					-d '{"warp_enabled":true}' -o /dev/null -w '%{http_code}' "$api/$id" 2>/dev/null)
 				case "$code" in
-					2??) rm -f "$reg"; log "ключи выданы Cloudflare"; return 0 ;;
-					*) log "Cloudflare: ключ выдан, WARP не включился ($code)" ;;
+					2??) ;;
+					*) log "Cloudflare $host: ключ выдан, WARP не включился ($code)"; G_PEER=""; G_V4=""; G_V6=""; dead="$dead $host"; continue ;;
 				esac
-			else
-				log "Cloudflare: в ответе нет id/token"
 			fi
-			;;
-		*) log "Cloudflare: ответ ${code:-нет связи}" ;;
-	esac
+			rm -f "$reg"; log "ключи выданы Cloudflare ($host)"; return 0
+		fi
+		log "Cloudflare $host: в ответе нет ключа сервера"
+	done
 	rm -f "$reg"
+	return 1
+}
 
-	# 2) внешний генератор (его собственная пара ключей, как в ZM)
-	reg="$AWG_RUN_DIR/ext.$$"
+ext_register() { # внешний генератор: его собственная пара ключей, как в ZM
+	local reg="$AWG_RUN_DIR/ext.$$" E_PRIV E_PEER E_V4 E_V6
+	mkdir -p "$AWG_RUN_DIR"
 	if curl -fsSL --connect-timeout 10 --max-time 30 "$WARP_PRIMARY" -o "$reg" 2>/dev/null; then
 		E_PRIV=$(grep -o '"key"[[:space:]]*:[[:space:]]*"[^"]*"' "$reg" 2>/dev/null | head -n1 | sed 's/.*:[[:space:]]*"//;s/"$//')
 		E_PEER=$(grep -o '"public_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$reg" 2>/dev/null | head -n1 | sed 's/.*:[[:space:]]*"//;s/"$//')
@@ -404,111 +409,184 @@ keys_register() { # [curl-args] -> G_PRIV/G_PEER/G_V4/G_V6
 	else
 		log "внешний генератор не ответил"
 	fi
+	return 1
+}
 
-	# 3) через живой amneziawg-интерфейс (как в ZM: провайдер часто закрывает API напрямую)
-	local i a
+keys_register() { # -> G_PRIV/G_PUB/G_PEER/G_V4/G_V6; BOOT_EP/BOOT_MASK — точка boot-туннеля, если он понадобился
+	local K_PRIV K_PUB i a host port m rc
+	mkdir -p "$AWG_RUN_DIR"
+	K_PRIV=$(awg genkey 2>/dev/null)
+	[ -n "$K_PRIV" ] || { log "нет утилиты awg"; return 1; }
+	K_PUB=$(printf '%s' "$K_PRIV" | awg pubkey 2>/dev/null)
+	[ -n "$K_PUB" ] || { log "awg pubkey не сработал"; return 1; }
+	G_PRIV="$K_PRIV"; G_PUB="$K_PUB"
+	BOOT_EP=""; BOOT_MASK=""
+
+	# 1) Cloudflare API напрямую
+	cf_register "" && return 0
+	# 2) внешний генератор
+	ext_register && return 0
+	# 3) через уже живой туннель: первый подходящий, как в ZM
 	for i in $(uci -q show network 2>/dev/null | sed -n "s/^network\.\([a-z0-9_]*\)\.proto='amneziawg'\$/\1/p"); do
 		a=$(hs_age_of "$i")
 		case "$a" in ''|*[!0-9]*) continue ;; esac
 		[ "$a" -lt 180 ] 2>/dev/null || continue
-		if _cf_api_ok "--interface $i"; then
+		if _cf_api_ok "$i"; then
 			log "Cloudflare доступен через туннель $i — регистрируем через него"
-			keys_register "--interface $i" && return 0
-		else
-			log "туннель $i жив, но API через него недоступен"
+			cf_register "$i" && return 0
+			return 1
 		fi
+		log "туннель $i жив, но API через него недоступен"
 	done
-
-	# 4) временный boot-туннель на общих ключах
+	# 4) временный boot-туннель на общих ключах; туннель остаётся поднятым на время регистрации
 	log "прямые пути не сработали — поднимаем временный туннель на общих ключах"
-	local host port m
 	for host in 188.114.96.3 162.159.192.1 188.114.97.1; do
 		for port in $AWG_TEST_PORTS; do
 			for m in "$MIXOMO_AWG_I1" "$AWG_I1_ICLOUD" "$AWG_I1_QUIC1"; do
+				[ "$AWG_NO_I1" = 1 ] && [ "$m" != "$MIXOMO_AWG_I1" ] && continue
 				try_conf "$AWG_TEST_IF" "$AWG_BOOT_PRIV" "$AWG_BOOT_IP" "$host:$port" "$m" || continue
-				if _cf_api_ok "--interface $AWG_TEST_IF"; then
-					try_down "$AWG_TEST_IF"
+				if _cf_api_ok "$AWG_TEST_IF"; then
+					BOOT_EP="$host:$port"; BOOT_MASK="$m"
 					log "boot-туннель поднят: $host:$port"
-					keys_register "--interface $AWG_TEST_IF" && return 0
-					return 1
+					cf_register "$AWG_TEST_IF"; rc=$?
+					try_down "$AWG_TEST_IF"
+					return $rc
 				fi
 				try_down "$AWG_TEST_IF"
 			done
 		done
 	done
+	try_down "$AWG_TEST_IF"
 	return 1
 }
 
-_rand_hosts() { # n -> случайные hosts из пулов
+_rand_hosts() { # n -> случайные hosts из пулов, в случайном порядке
 	awk -v n="$1" -v pools="$ST_WARP_POOLS" -v seed="$(date +%s)$$" 'BEGIN {
 		srand(seed); c = split(pools, p, " ")
 		for (i = 1; i <= c; i++) for (k = 0; k < n; k++) printf "%s%d\n", p[i], 2 + int(rand() * 253)
-	}' | sort -u
+	}' | awk 'BEGIN { srand() } { print rand() "\t" $0 }' | sort -n | cut -f2
 }
 
-_warp_conf_i1() { # текущая маска из WARP.conf
-	[ -n "$CONF_FILE" ] && [ -f "$CONF_FILE" ] && sed -n 's/^I1 = //p' "$CONF_FILE" | head -n1
+mask_name() {
+	case "$1" in
+		"$AWG_I1_ICLOUD") echo "iCloud-DNS" ;;
+		"$AWG_I1_QUIC1") echo "QUIC-2" ;;
+		"<r 2><b 0x01000001000000000001"*) echo "DNS" ;;
+		"<b 0x0001"*) echo "STUN" ;;
+		"<b 0x4f5054494f4e53"*) echo "SIP" ;;
+		*) echo "QUIC" ;;
+	esac
 }
 
-pick_endpoint() { # priv v4 [hint_ep] [hint_mask] -> BEST_EP/BEST_MASK; 0 найдено / 1 нет
-	local priv="$1" v4="$2" host port m ep
-	local t0=$(date +%s) tries=0 mn=0
-	local masks="" cur
-	cur="$(_warp_conf_i1)"
-	[ -n "$cur" ] && masks="$cur"
-	masks="$masks
-$MIXOMO_AWG_I1
-$AWG_I1_ICLOUD
-$AWG_I1_QUIC1
-$(_i1_dns)
-$(_i1_stun)
-$(_i1_sip)"
-	local h1="${BEST_HINT_EP%%:*}"
-	[ -n "$h1" ] || h1="${AWG_TEST_HOSTS%% *}"
-	local hosts="$h1 $AWG_TEST_HOSTS $(_rand_hosts 2)"
-	log "подбор точки входа: до 80 попыток, лимит 7 минут"
+_ml() { [ "$AWG_NO_I1" = 1 ] || echo ", маска $(mask_name "$1")"; }
 
-	for host in $hosts; do
-		for port in $AWG_TEST_PORTS; do
-			ep="$host:$port"
-			local nl='
-'
-			local oifs="$IFS"
-			IFS="$nl"
-			for m in $masks; do
+pick_endpoint() { # priv v4 -> BEST_EP/BEST_MASK/BEST_KIND (ok|ru|fall|default); 0 выбрано / 1 нет
+	local priv="$1" v4="$2" host port m a n=0 rucnt=0 ports="" tried="" hit_ru=0 stop=0
+	local bmask="${BOOT_MASK:-$MIXOMO_AWG_I1}" masks allm h1 t0 oifs="$IFS"
+	local best="" bestmask="" ruep="" rumask="" fallep="" fallmask="" tout tip twarp tcolo tcountry loss rtt torn
+	BEST_EP=""; BEST_MASK=""; BEST_KIND=""
+
+	h1="${BOOT_EP%%:*}"; [ -n "$h1" ] || h1="${AWG_TEST_HOSTS%% *}"
+	masks="$bmask"
+	for m in "$MIXOMO_AWG_I1" "$AWG_I1_ICLOUD" "$AWG_I1_QUIC1"; do [ "$m" = "$bmask" ] || masks="$masks|$m"; done
+
+	log "подбор точки входа: сканируем порты на $h1"
+	for port in $AWG_TEST_PORTS; do
+		IFS='|'
+		for m in $masks; do
+			IFS="$oifs"
+			[ "$AWG_NO_I1" = 1 ] && [ "$m" != "$bmask" ] && continue
+			n=$((n + 1))
+			try_conf "$AWG_TEST_IF" "$priv" "$v4" "$h1:$port" "$m" "$G_PEER" && { ports="$ports $port"; break; }
+		done
+		IFS="$oifs"
+		case " $ports " in *" $port "*) log "порт $port: открыт" ;; *) log "порт $port: закрыт" ;; esac
+	done
+	if [ -z "$ports" ]; then
+		log "основные порты молчат — пробуем запасные, это до двух минут"
+		AWG_TRY_WAIT=4
+		for port in $ST_WARP_PORTS_EXT; do
+			try_conf "$AWG_TEST_IF" "$priv" "$v4" "$h1:$port" "$bmask" "$G_PEER" && ports="$ports $port"
+			[ "$(echo $ports | wc -w)" -ge 2 ] && break
+		done
+		AWG_TRY_WAIT=8
+		[ -n "$ports" ] && log "открыты запасные порты:$ports"
+	fi
+	[ -n "$ports" ] || log "ни один порт не ответил — похоже, провайдер режет UDP для WARP"
+
+	allm="$masks|$(_i1_dns)|$(_i1_stun)|$(_i1_sip)"
+	t0=$(date +%s)
+	for host in $h1 $AWG_TEST_HOSTS $(_rand_hosts 2); do
+		[ "$rucnt" -ge 12 ] && { log "все проверенные точки ведут на российские узлы — останавливаем поиск"; break; }
+		hit_ru=0
+		for port in $ports; do
+			a="$host:$port"
+			case " $tried " in *" $a "*) continue ;; esac
+			tried="$tried $a"
+			IFS='|'
+			for m in $allm; do
 				IFS="$oifs"
-				mn=$((mn + 1))
-				[ "$mn" -gt 7 ] && mn=1
-				tries=$((tries + 1))
-				[ "$tries" -gt 80 ] && return 1
-				[ $(( $(date +%s) - t0 )) -gt 420 ] && return 1
-				if try_conf "$AWG_TEST_IF" "$priv" "$v4" "$ep" "$m" "$G_PEER"; then
-					log "попытка $tries: $ep, маска #$mn — рукопожатие есть"
-					# трафик реально идёт через туннель? (trace, как _awg_trace в ZM)
-					local tout
-					tout=$(_wac_trace_ip "$AWG_TEST_IF") || { log "   $ep — trace не прошёл"; continue; }
-					local tip twarp tcolo
-					tip=$(printf '%s\n' "$tout" | awk '{print $1}')
-					twarp=$(printf '%s\n' "$tout" | awk '{print $2}')
-					tcolo=$(printf '%s\n' "$tout" | awk '{print $3}')
-					[ -n "$tip" ] || { log "   $ep — рукопожатие есть, trace не идёт"; continue; }
-					case "$twarp" in on|plus) ;; *) log "   $ep — trace warp=${twarp:-нет}"; continue ;; esac
-					set -- $(_wac_probe "$AWG_TEST_IF")
-					local loss="$1" torn="$3"
-					[ "${loss:-100}" -ge 100 ] 2>/dev/null && { log "   $ep — рукопожатие есть, трафика нет"; continue; }
-					[ "$torn" = "1" ] && { log "   $ep — трафик обрывается (DPI)"; continue; }
-					BEST_EP="$ep"; BEST_MASK="$m"
-					log "   $ep — трафик идёт: узел ${tcolo:-?}$([ "$tcolo" != '-' ] && is_ru "$tcolo" && echo ' (RU)')"
-					log "найдена точка: $ep, маска #$mn"
-					return 0
-				else
-					log "попытка $tries: $ep, маска #$mn — нет ответа"
+				[ "$AWG_NO_I1" = 1 ] && [ "$m" != "$bmask" ] && continue
+				[ $(( $(date +%s) - t0 )) -gt 420 ] && { log "поиск идёт больше 7 минут — останавливаемся"; stop=1; break; }
+				n=$((n + 1))
+				[ "$n" -gt 80 ] && { stop=1; break; }
+				if ! try_conf "$AWG_TEST_IF" "$priv" "$v4" "$a" "$m" "$G_PEER"; then
+					log "$a$(_ml "$m") — нет ответа"
+					continue
 				fi
+				tout=$(_wac_trace_ip "$AWG_TEST_IF")
+				tip=$(printf '%s\n' "$tout" | awk '{print $1}')
+				twarp=$(printf '%s\n' "$tout" | awk '{print $2}')
+				tcolo=$(printf '%s\n' "$tout" | awk '{print $3}')
+				tcountry=$(printf '%s\n' "$tout" | awk '{print $4}')
+				if [ -z "$tip" ] || { [ "$twarp" != on ] && [ "$twarp" != plus ]; }; then
+					log "$a$(_ml "$m") — рукопожатие есть, трафика нет (warp=${twarp:-нет})"
+					[ -n "$fallep" ] || { fallep="$a"; fallmask="$m"; }
+					continue
+				fi
+				set -- $(_wac_probe "$AWG_TEST_IF"); loss=$1; rtt=$2; torn=$3
+				if [ "$torn" = 1 ]; then
+					log "$a$(_ml "$m") — трафик пошёл и оборвался: так DPI рвёт туннель"
+					[ -n "$fallep" ] || { fallep="$a"; fallmask="$m"; }
+					continue
+				fi
+				if is_ru "$tcolo"; then
+					log "$a$(_ml "$m") — трафик идёт, но через российский узел $tcolo: там свой DPI, ищем зарубежный"
+					[ -n "$ruep" ] || { ruep="$a"; rumask="$m"; }
+					rucnt=$((rucnt + 1))
+					hit_ru=1
+					break
+				fi
+				best="$a"; bestmask="$m"
+				log "$a$(_ml "$m") — трафик идёт: узел ${tcolo:-?}, потери ${loss}%, ${rtt} мс"
+				break
 			done
 			IFS="$oifs"
+			[ "$stop" = 1 ] && break
+			[ -n "$best" ] && break
+			[ "$hit_ru" = 1 ] && break
 		done
+		[ "$stop" = 1 ] && break
+		[ -n "$best" ] && break
 	done
-	return 1
+	IFS="$oifs"
+	try_down "$AWG_TEST_IF"
+
+	if [ -n "$best" ]; then BEST_EP="$best"; BEST_MASK="$bestmask"; BEST_KIND=ok; log "найдена точка: $best$(_ml "$bestmask")"; return 0; fi
+	if [ -n "$ruep" ]; then
+		BEST_EP="$ruep"; BEST_MASK="$rumask"; BEST_KIND=ru
+		log "зарубежный узел не нашёлся — записываю точку через российский узел ($ruep): WARP работает, но часть сайтов через него может не открыться"
+		return 0
+	fi
+	if [ "$REGEN_MODE" = auto ]; then log "зарубежных точек нет — автоматическая замена отменена"; return 1; fi
+	if [ -n "$fallep" ]; then
+		BEST_EP="$fallep"; BEST_MASK="$fallmask"; BEST_KIND=fall
+		log "трафик нигде не пошёл — записываю точку с рукопожатием ($fallep), туннель может не заработать"
+		return 0
+	fi
+	BEST_EP="engage.cloudflareclient.com:4500"; BEST_MASK="$MIXOMO_AWG_I1"; BEST_KIND=default
+	log "ни одна точка не ответила — записываю стандартную ($BEST_EP)"
+	return 0
 }
 
 conf_write() { # priv peer v4 v6 endpoint mask outfile
@@ -546,7 +624,7 @@ uci_restore() { # infile — откат
 				k="${kv#network.}"; k="${k#*.}"
 				sec="${kv#network.}"; sec="${sec%%.*}"
 				if [ "$sec" = "$IFACE" ] || [ "$sec" = "$p" ]; then
-					uci set "$kv=$v"
+					if [ -n "$v" ]; then uci set "$kv=$v"; else uci -q delete "$kv"; fi
 				fi
 				;;
 		esac
@@ -587,8 +665,9 @@ apply_iface() { # conf iface — применить ключи/endpoint/маск
 	return 0
 }
 
-cmd_regen() {
+cmd_regen() { # [auto] — auto: из cmd_run, фолбэки fall/default не пишем
 	local conf iface res detail now
+	REGEN_MODE="$1"
 	conf=$(cfg_get conf 2>/dev/null); [ -n "$conf" ] || conf="/root/WARP.conf"
 	[ -n "$WAC_CONF_OVERRIDE" ] && conf="$WAC_CONF_OVERRIDE"
 	CONF_FILE="$conf"
@@ -598,8 +677,8 @@ cmd_regen() {
 	if ! acquire_lock; then
 		printf '{"result":"skipped:busy"}\n'; return 0
 	fi
-	G_PRIV=""; G_PEER=""; G_V4=""; G_V6=""; BEST_EP=""; BEST_MASK=""
-	G_PUB=""; BEST_HINT_EP=""
+	G_PRIV=""; G_PEER=""; G_V4=""; G_V6=""; BEST_EP=""; BEST_MASK=""; BEST_KIND=""
+	G_PUB=""; BOOT_EP=""; BOOT_MASK=""; AWG_NO_I1=0
 
 	if ! iface_exists "$iface" || iface_manual_off "$iface"; then
 		release_lock
@@ -631,6 +710,8 @@ cmd_regen() {
 
 	local newconf="$conf.new"
 	conf_write "$G_PRIV" "$G_PEER" "$G_V4" "$G_V6" "$BEST_EP" "$BEST_MASK" "$newconf"
+	[ "$AWG_NO_I1" = 1 ] && sed -i '/^I1 = /d' "$newconf"
+	log "regen: выбрана точка $BEST_EP ($BEST_KIND)"
 
 	# бэкап + атомарная замена
 	cp -f "$conf" "$conf.bak" 2>/dev/null
@@ -773,7 +854,7 @@ cmd_run() {
 		esac
 	done
 	log "run: конфиг мертв после $max проверок — запускаем регенерацию"
-	cmd_regen
+	cmd_regen auto
 	release_lock
 	return 0
 }
@@ -784,7 +865,7 @@ case "$1" in
 	check) cmd_check ;;
 	get_settings) get_settings ;;
 	set_settings) shift; set_settings "$@" ;;
-	regen) cmd_regen ;;
+	regen) cmd_regen "$2" ;;
 	run) cmd_run ;;
 	*) echo "usage: warp-autocheck {status|check|run|regen|log}" >&2; exit 1 ;;
 esac
