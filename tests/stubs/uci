@@ -1,0 +1,88 @@
+#!/bin/sh
+# Стаб uci — хранилище: WAC_TEST_ROOT/etc/config/<name>, плоский формат:
+#   @<section>=<type>          — секция и её тип
+#   <section>.<key>=<value>    — опция
+# show выводит: <name>.<section>=<type> и <name>.<section>.<key>='<value>'
+ROOT="${WAC_TEST_ROOT:?WAC_TEST_ROOT not set}"
+CFGDIR="$ROOT/etc/config"
+
+ARGS=""
+QUIET=""
+for a in "$@"; do
+	case "$a" in -q) QUIET=1 ;; -X) ;; *) ARGS="$ARGS $a" ;; esac
+done
+set -- $ARGS
+CMD="$1"; shift
+[ $# -ge 1 ] || { [ -n "$QUIET" ] || echo "uci: no args" >&2; exit 1; }
+ARG="$*"
+
+err() { [ -n "$QUIET" ] || echo "uci: $*" >&2; exit 1; }
+cf() { echo "$CFGDIR/$1"; }
+
+split_2() { CFG="${1%%.*}"; REST="${1#*.}"; SEC="${REST%%.*}"; KEY="${REST#*.}"; [ "$KEY" = "$REST" ] && KEY=""; }
+
+case "$CMD" in
+	get)
+		split_2 "$ARG"
+		f="$(cf "$CFG")"; [ -f "$f" ] || err "get $ARG"
+		if [ -n "$KEY" ]; then
+			v=$(sed -n "s/^$SEC\.$KEY=//p" "$f" | tail -n1)
+			[ -n "$v" ] && { echo "$v"; exit 0; }
+			err "get $ARG"
+		else
+			t=$(sed -n "s/^@$SEC=//p" "$f" | head -n1)
+			[ -n "$t" ] && { echo "$t"; exit 0; }
+			err "get $ARG"
+		fi
+		;;
+	show)
+		f="$(cf "$ARG")"; [ -f "$f" ] || err "show $ARG"
+		awk -v pre="$ARG" '
+			/^@/ { s = substr($0, 2); eq = index(s, "="); print pre "." substr(s, 1, eq-1) "=" substr(s, eq+1); next }
+			{ eq = index($0, "="); print pre "." substr($0, 1, eq-1) "='"'"'" substr($0, eq+1) "'"'"'" }
+		' "$f"
+		;;
+	set)
+		# поддержка обеих форм: uci set k=v  и  uci set k 'v'
+		case "$ARG" in
+			*" "*)
+				kv="${ARG%% *}"; VAL="${ARG#* }"
+				VAL=$(echo "$VAL" | sed "s/^'//;s/'$//")
+				;;
+			*=*)
+				kv="${ARG%%=*}"; VAL="${ARG#*=}"
+				;;
+			*) err "set" ;;
+		esac
+		split_2 "$kv"
+		f="$(cf "$CFG")"; mkdir -p "$CFGDIR"; [ -f "$f" ] || : > "$f"
+		if [ -n "$KEY" ]; then
+			grep -v "^$SEC\.$KEY=" "$f" > "$f.t"; mv "$f.t" "$f"
+			echo "$SEC.$KEY=$VAL" >> "$f"
+		else
+			grep -v "^@$SEC=" "$f" > "$f.t"; mv "$f.t" "$f"
+			echo "@$SEC=$VAL" >> "$f"
+		fi
+		exit 0
+		;;
+	delete)
+		CFG="${ARG%%.*}"
+		f="$(cf "$CFG")"; [ -f "$f" ] || exit 0
+		if echo "$ARG" | grep -q '\.'; then
+			split_2 "$ARG"
+			if [ -n "$KEY" ]; then
+				grep -v "^$SEC\.$KEY=" "$f" > "$f.t" && mv "$f.t" "$f"
+			else
+				grep -v "^@$SEC=" "$f" | grep -v "^$SEC\." > "$f.t" && mv "$f.t" "$f"
+			fi
+		else
+			grep -v "^@$ARG=" "$f" | grep -v "^$ARG\." > "$f.t" && mv "$f.t" "$f"
+		fi
+		exit 0
+		;;
+	*) # commit и прочее — no-op
+		case "$CMD" in
+			commit|import|export|changes|revert) exit 0 ;;
+			*) err "unsupported: $CMD" ;;
+		esac ;;
+esac

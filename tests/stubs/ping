@@ -1,0 +1,6 @@
+#!/bin/sh
+# Стаб ping: вывод из WAC_TEST_ROOT/ping/last.out (общий для всех вызовов)
+echo "ping $*" >> "${WAC_TEST_ROOT:?}/ping.log" 2>/dev/null
+F="${WAC_TEST_ROOT:?}/ping/last.out"
+[ -f "$F" ] && cat "$F"
+exit 0

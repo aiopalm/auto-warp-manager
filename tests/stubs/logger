@@ -1,0 +1,4 @@
+#!/bin/sh
+# Стаб logger: всё в actions.log
+echo "logger -t $2: $*" >> "${WAC_TEST_ROOT:?}/actions.log" 2>/dev/null
+exit 0

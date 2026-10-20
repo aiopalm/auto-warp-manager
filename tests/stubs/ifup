@@ -1,0 +1,4 @@
+#!/bin/sh
+# Стаб ifup/ifdown: пишет в actions.log
+echo "$0 $*" >> "${WAC_TEST_ROOT:?}/actions.log" 2>/dev/null
+exit 0

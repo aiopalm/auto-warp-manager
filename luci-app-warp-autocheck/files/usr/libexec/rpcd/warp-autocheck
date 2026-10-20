@@ -1,0 +1,62 @@
+#!/bin/sh
+# rpcd-плагин: ubus-объект luci.warp-autocheck
+
+JSHN_LIB="${JSHN_LIB:-/usr/share/libubox/jshn.sh}"
+[ -f "$JSHN_LIB" ] && . "$JSHN_LIB"
+
+BACKEND="/usr/bin/warp-autocheck"
+
+list_methods() {
+	json_init
+	json_add_object "status";        json_close_object
+	json_add_object "check";         json_close_object
+	json_add_object "regen";         json_close_object
+	json_add_object "log";           json_close_object
+	json_add_object "get_settings";  json_close_object
+	json_add_object "set_settings";  json_add_string "enabled" "string"; json_add_string "interval" "string"; json_add_string "interface" "string"; json_add_string "retries" "string"; json_close_object
+	json_dump
+}
+
+call_method() {
+	local method="$1"
+	local input
+	input="$(cat)"
+	json_load "$input" 2>/dev/null
+
+	case "$method" in
+		status)      "$BACKEND" status ;;
+		log)         "$BACKEND" log ;;
+		check)
+			if [ -f /tmp/warp-autocheck.lock ] && kill -0 "$(cat /tmp/warp-autocheck.lock 2>/dev/null)" 2>/dev/null; then
+				echo '{"error":"операция уже выполняется"}'; return 1
+			fi
+			nohup "$BACKEND" check >/tmp/warp-autocheck.job 2>&1 &
+			echo '{"ok":true}'
+			;;
+		regen)
+			if [ -f /tmp/warp-autocheck.lock ] && kill -0 "$(cat /tmp/warp-autocheck.lock 2>/dev/null)" 2>/dev/null; then
+				echo '{"error":"операция уже выполняется"}'; return 1
+			fi
+			nohup "$BACKEND" regen >/tmp/warp-autocheck.job 2>&1 &
+			echo '{"ok":true}'
+			;;
+		get_settings) "$BACKEND" get_settings ;;
+		set_settings)
+			local enabled interval interface retries
+			json_get_var enabled enabled
+			json_get_var interval interval
+			json_get_var interface interface
+			json_get_var retries retries
+			"$BACKEND" set_settings "$enabled" "$interval" "$interface" "$retries"
+			;;
+		*) echo '{"error":"unknown method"}'; return 1 ;;
+	esac
+}
+
+case "$1" in
+	list) list_methods ;;
+	call)
+		call_method "$2"
+		;;
+	*) echo '{"error":"usage: warp-autocheck {list|call <method>}"}'; exit 1 ;;
+esac

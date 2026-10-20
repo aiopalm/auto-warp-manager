@@ -1,0 +1,7 @@
+# WARP AutoCheck — автопроверка и автозамена WARP-конфига
+config main 'main'
+	option enabled '0'
+	option interval '6'
+	option interface 'warp'
+	option retries '2'
+	option conf '/root/WARP.conf'

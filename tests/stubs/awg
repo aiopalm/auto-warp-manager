@@ -1,0 +1,29 @@
+#!/bin/sh
+# Стаб awg: handshake из WAC_TEST_ROOT/awg/<iface>.handshakes (epoch или пусто),
+# peer-список из WAC_TEST_ROOT/awg/<iface>.peers (опц.), вызовы — в awg.log
+ROOT="${WAC_TEST_ROOT:?WAC_TEST_ROOT not set}"
+mkdir -p "$ROOT/awg" 2>/dev/null
+echo "awg $*" >> "$ROOT/awg.log" 2>/dev/null
+
+case "$1" in
+	show)
+		iface="$2"; sub="$3"
+		f="$ROOT/awg/$iface.handshakes"
+		[ -f "$f" ] || exit 0
+		hs=$(cat "$f")
+		[ -n "$hs" ] && echo "abcdef123456	$hs"
+		exit 0
+		;;
+	genkey)
+		if [ -f "$ROOT/awg/genkey" ]; then cat "$ROOT/awg/genkey"; else echo "TESTPRIVKEY/abc123="; fi
+		;;
+	pubkey)
+		echo "TESTPUBKEY/xyz789="
+		;;
+	setconf|set)
+		echo "awg $*" >> "$ROOT/awg.log" 2>/dev/null
+		exit 0
+		;;
+	*) exit 0 ;;
+esac
+exit 0

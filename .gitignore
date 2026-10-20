@@ -1,0 +1,13 @@
+# артефакты сборки
+dist/
+*.ipk
+
+# рабочие каталоги
+.superpowers/
+tmp/
+study/
+
+# системное
+.DS_Store
+*.log
+*.tmp

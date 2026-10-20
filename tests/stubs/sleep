@@ -1,0 +1,10 @@
+#!/bin/sh
+# Стаб sleep: фиксирует паузу, двигает фейковые часы вперёд
+ROOT="${WAC_TEST_ROOT:?WAC_TEST_ROOT not set}"
+SECS="${1%%.*}"
+case "$SECS" in ''|*[!0-9]*) SECS=1 ;; esac
+if [ -f "$ROOT/clock" ]; then
+	echo $(( $(cat "$ROOT/clock") + SECS )) > "$ROOT/clock"
+fi
+echo "sleep $SECS" >> "$ROOT/sleep.log" 2>/dev/null
+exit 0

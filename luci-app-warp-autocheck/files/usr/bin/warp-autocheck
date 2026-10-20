@@ -1,0 +1,770 @@
+#!/bin/sh
+# warp-autocheck — проверка доступности и автозамена WARP-конфига (AmneziaWG)
+# Команды: status | check | run | regen | log
+
+# --- пути (переопределяются тестами) ---------------------------------------
+WAC_STATE_FILE="${WAC_STATE_FILE:-/tmp/warp-autocheck.state}"
+WAC_LOG_FILE="${WAC_LOG_FILE:-/tmp/warp-autocheck.log}"
+WAC_LOCK_FILE="${WAC_LOCK_FILE:-/tmp/warp-autocheck.lock}"
+WAC_UPTIME_FILE="${WAC_UPTIME_FILE:-/proc/uptime}"
+WAC_CONF_OVERRIDE="${WAC_CONF_OVERRIDE:-}"   # тестовый хук: путь к WARP.conf
+
+# --- константы (из Zapret-Manager, извлечены дословно) ----------------------
+AWG_WARP_PEER="bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="
+RU_COLOS="DME SVX LED KJA REN OVB KZN AER VVO"
+AWG_TEST_HOSTS="162.159.192.1 188.114.97.1 188.114.96.3 162.159.193.2 162.159.195.2 188.114.98.2 188.114.99.2 8.6.112.2 8.34.70.2 8.34.146.2 8.39.125.2"
+AWG_TEST_PORTS="2408 500 4500 1701"
+AWG_BOOT_PRIV="4OnO86dDLpqJ2U10ODwX3tarx6xlRGLfkmbSBtMgaHg="
+AWG_BOOT_IP="172.16.0.3"
+AWG_CF_VER="a-6.11-2223"
+AWG_I1_HOSTS="www.apple.com www.google.com www.microsoft.com cdn.jsdelivr.net"
+ST_WARP_POOLS="188.114.96. 188.114.97. 188.114.98. 188.114.99. 162.159.192. 162.159.193. 162.159.195. 8.34.70. 8.34.146. 8.39.214. 8.39.204. 8.6.112. 8.35.211. 8.39.125. 8.47.69."
+WARP_PRIMARY="https://santa-atmo.ru/warp/warp.php"
+MIXOMO_AWG_JC=4
+MIXOMO_AWG_JMIN=40
+MIXOMO_AWG_JMAX=70
+MIXOMO_AWG_H1=1
+MIXOMO_AWG_H2=2
+MIXOMO_AWG_H3=3
+MIXOMO_AWG_H4=4
+MIXOMO_AWG_S1=0
+MIXOMO_AWG_S2=0
+AWG_I1_ICLOUD="<r 2><b 0x858000010001000000000669636c6f756403636f6d0000010001c00c000100010000105a00044d583737>"
+AWG_I1_QUIC1="<b 0xc10000000114367096bb0fb3f58f3a3fb8aaacd61d63a1c8a40e14f7374b8a62dccba6431716c3abf6f5afbcfb39bd008000047c32e268567c652e6f4db58bff759bc8c5aaca183b87cb4d22938fe7d8dca22a679a79e4d9ee62e4bbb3a380dd78d4e8e48f26b38a1d42d76b371a5a9a0444827a69d1ab5872a85749f65a4104e931740b4dc1e2dd77733fc7fac4f93011cd622f2bb47e85f71992e2d585f8dc765a7a12ddeb879746a267393ad023d267c4bd79f258703e27345155268bd3cc0506ebd72e2e3c6b5b0f005299cd94b67ddabe30389c4f9b5c2d512dcc298c14f14e9b7f931e1dc397926c31fbb7cebfc668349c218672501031ecce151d4cb03c4c660b6c6fe7754e75446cd7de09a8c81030c5f6fb377203f551864f3d83e27de7b86499736cbbb549b2f37f436db1cae0a4ea39930f0534aacdd1e3534bc87877e2afabe959ced261f228d6362e6fd277c88c312d966c8b9f67e4a92e757773db0b0862fb8108d1d8fa262a40a1b4171961f0704c8ba314da2482ac8ed9bd28d4b50f7432d89fd800c25a50c5e2f5c0710544fef5273401116aa0572366d8e49ad758fcb29e6a92912e644dbe227c247cb3417eabfab2db16796b2fba420de3b1dc94e8361f1f324a331ddaf1e626553138860757fd0bf687566108b77b70fb9f8f8962eca599c4a70ed373666961a8cb506b96756d9e28b94122b20f16b54f118c0e603ce0b831efea614ad836df6cf9affbdd09596412547496967da758cec9080295d853b0861670b71d9abde0d562b1a6de82782a5b0c14d297f27283a895abc889a5f6703f0e6eb95f67b2da45f150d0d8ab805612d570c2d5cb6997ac3a7756226c2f5c8982ffbd480c5004b0660a3c9468945efde90864019a2b519458724b55d766e16b0da25c0557c01f3c11ddeb024b62e303640e17fdd57dedb3aeb4a2c1b7c93059f9c1d7118d77caac1cd0f6556e46cbc991c1bb16970273dea833d01e5090d061a0c6d25af2415cd2878af97f6d0e7f1f936247b394ecb9bd484da6be936dee9b0b92dc90101a1b4295e97a9772f2263eb09431995aa173df4ca2abd687d87706f0f93eaa5e13cbe3b574fa3cfe94502ace25265778da6960d561381769c24e0cbd7aac73c16f95ae74ff7ec38124f7c722b9cb151d4b6841343f29be8f35145e1b27021056820fed77003df8554b4155716c8cf6049ef5e318481460a8ce3be7c7bfac695255be84dc491c19e9dedc449dd3471728cd2a3ee51324ccb3eef121e3e08f8e18f0006ea8957371d9f2f739f0b89e4db11e5c6430ada61572e589519fbad4498b460ce6e4407fc2d8f2dd4293a50a0cb8fcaaf35cd9a8cc097e3603fbfa08d9036f52b3e7fcce11b83ad28a4ac12dba0395a0cc871cefd1a2856fffb3f28d82ce35cf80579974778bab13d9b3578d8c75a2d196087a2cd439aff2bb33f2db24ac175fff4ed91d36a4cdbfaf3f83074f03894ea40f17034629890da3efdbb41141b38368ab532209b69f057ddc559c19bc8ae62bf3fd564c9a35d9a83d14a95834a92bae6d9a29ae5e8ece07910d16433e4c6230c9bd7d68b47de0de9843988af6dc88b5301820443bd4d0537778bf6b4c1dd067fcf14b81015f2a67c7f2a28f9cb7e0684d3cb4b1c24d9b343122a086611b489532f1c3a26779da1706c6759d96d8ab>"
+MIXOMO_AWG_I1="<b 0xce000000010897a297ecc34cd6dd000044d0ec2e2e1ea2991f467ace4222129b5a098823784694b4897b9986ae0b7280135fa85e196d9ad980b150122129ce2a9379531b0fd3e871ca5fdb883c369832f730e272d7b8b74f393f9f0fa43f11e510ecb2219a52984410c204cf875585340c62238e14ad04dff382f2c200e0ee22fe743b9c6b8b043121c5710ec289f471c91ee414fca8b8be8419ae8ce7ffc53837f6ade262891895f3f4cecd31bc93ac5599e18e4f01b472362b8056c3172b513051f8322d1062997ef4a383b01706598d08d48c221d30e74c7ce000cdad36b706b1bf9b0607c32ec4b3203a4ee21ab64df336212b9758280803fcab14933b0e7ee1e04a7becce3e2633f4852585c567894a5f9efe9706a151b615856647e8b7dba69ab357b3982f554549bef9256111b2d67afde0b496f16962d4957ff654232aa9e845b61463908309cfd9de0a6abf5f425f577d7e5f6440652aa8da5f73588e82e9470f3b21b27b28c649506ae1a7f5f15b876f56abc4615f49911549b9bb39dd804fde182bd2dcec0c33bad9b138ca07d4a4a1650a2c2686acea05727e2a78962a840ae428f55627516e73c83dd8893b02358e81b524b4d99fda6df52b3a8d7a5291326e7ac9d773c5b43b8444554ef5aea104a738ed650aa979674bbed38da58ac29d87c29d387d80b526065baeb073ce65f075ccb56e47533aef357dceaa8293a523c5f6f790be90e4731123d3c6152a70576e90b4ab5bc5ead01576c68ab633ff7d36dcde2a0b2c68897e1acfc4d6483aaaeb635dd63c96b2b6a7a2bfe042f6aed82e5363aa850aace12ee3b1a93f30d8ab9537df483152a5527faca21efc9981b304f11fc95336f5b9637b174c5a0659e2b22e159a9fed4b8e93047371175b1d6d9cc8ab745f3b2281537d1c75fb9451871864efa5d184c38c185fd203de206751b92620f7c369e031d2041e152040920ac2c5ab5340bfc9d0561176abf10a147287ea90758575ac6a9f5ac9f390d0d5b23ee12af583383d994e22c0cf42383834bcd3ada1b3825a0664d8f3fb678261d57601ddf94a8a68a7c273a18c08aa99c7ad8c6c42eab67718843597ec9930457359dfdfbce024afc2dcf9348579a57d8d3490b2fa99f278f1c37d87dad9b221acd575192ffae1784f8e60ec7cee4068b6b988f0433d96d6a1b1865f4e155e9fe020279f434f3bf1bd117b717b92f6cd1cc9bea7d45978bcc3f24bda631a36910110a6ec06da35f8966c9279d130347594f13e9e07514fa370754d1424c0a1545c5070ef9fb2acd14233e8a50bfc5978b5bdf8bc1714731f798d21e2004117c61f2989dd44f0cf027b27d4019e81ed4b5c31db347c4a3a4d85048d7093cf16753d7b0d15e078f5c7a5205dc2f87e330a1f716738dce1c6180e9d02869b5546f1c4d2748f8c90d9693cba4e0079297d22fd61402dea32ff0eb69ebd65a5d0b687d87e3a8b2c42b648aa723c7c7daf37abcc4bb85caea2ee8f55bec20e913b3324ab8f5c3304f820d42ad1b9f2ffc1a3af9927136b4419e1e579ab4c2ae3c776d293d397d575df181e6cae0a4ada5d67ecea171cca3288d57c7bbdaee3befe745fb7d634f70386d873b90c4d6c6596bb65af68f9e5121e67ebf0d89d3c909ceedfb32ce9575a7758ff080724e1ab5d5f43074ecb53a479af21ed03d7b6899c36631c0166f9d47e5e1d4528a5d3d3f744029c4b1c190cbfbad06f5f83f7ad0429fa9a2719c56ffe3783460e166de2d8>"
+ST_WARP_PORTS_EXT="854 859 864 878 880 890 891 894 903 908 928 934 939 942 943 945 946 955 968 987 988 1002 1010 1014 1018 1070 1074 1180 1387 1843 2371 2506 3138 3476 3581 3854 4177 4198 4233 5279 5956 7103 7152 7156 7281 7559 8319 8742 8854 8886"
+
+
+
+# --- утилиты ---------------------------------------------------------------
+AWG_TEST_IF="wac-test"
+AWG_TRY_WAIT=8
+AWG_API="https://api.cloudflareclient.com/v0a4005/reg"
+WARP_PRIMARY="$MIXOMO_WARP_PRIMARY"
+AWG_RUN_DIR="${WAC_RUN_DIR:-/tmp/warp-autocheck.run}"
+
+log() {
+	echo "$(date '+%Y-%m-%dT%H:%M:%S') $*" >> "$WAC_LOG_FILE" 2>/dev/null
+	logger -t warp-autocheck "$*" 2>/dev/null
+	return 0
+}
+
+cfg_get() { uci -q get "warp-autocheck.main.$1"; }
+
+state_get() { [ -f "$WAC_STATE_FILE" ] && sed -n "s/^$1=//p" "$WAC_STATE_FILE" | tail -n1; }
+
+state_set() {
+	: > "$WAC_STATE_FILE.tmp"
+	touch "$WAC_STATE_FILE"
+	while IFS='=' read -r k v; do
+		[ "$k" = "$1" ] && continue
+		[ -n "$k" ] && echo "$k=$v" >> "$WAC_STATE_FILE.tmp"
+	done < "$WAC_STATE_FILE"
+	echo "$1=$2" >> "$WAC_STATE_FILE.tmp"
+	mv -f "$WAC_STATE_FILE.tmp" "$WAC_STATE_FILE"
+}
+
+esc() {
+	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\t\r\n'
+}
+
+uptime_now() {
+	[ -f "$WAC_UPTIME_FILE" ] || { echo 0; return 0; }
+	awk '{ print int($1) }' "$WAC_UPTIME_FILE" 2>/dev/null
+}
+
+lock_alive() {
+	[ -f "$WAC_LOCK_FILE" ] || return 1
+	pid=$(cat "$WAC_LOCK_FILE" 2>/dev/null)
+	case "$pid" in ''|*[!0-9]*) rm -f "$WAC_LOCK_FILE"; return 1 ;; esac
+	if kill -0 "$pid" 2>/dev/null; then return 0; else rm -f "$WAC_LOCK_FILE"; return 1; fi
+}
+
+acquire_lock() {
+	if lock_alive; then
+		# наш собственный lock (вложенный вызов) — не блокируем
+		[ "$(cat "$WAC_LOCK_FILE" 2>/dev/null)" = "$$" ] && return 0
+		return 1
+	fi
+	echo $$ > "$WAC_LOCK_FILE"
+	WAC_LOCK_HELD=1
+	return 0
+}
+
+release_lock() {
+	[ "$WAC_LOCK_HELD" = "1" ] || return 0
+	rm -f "$WAC_LOCK_FILE"
+	WAC_LOCK_HELD=0
+	return 0
+}
+
+# --- amneziawg-хелперы ------------------------------------------------------
+# peer-секция интерфейса в uci network: секция типа amneziawg_<iface>
+peer_sec() {
+	uci -q -X show network 2>/dev/null | sed -n "s/^network\.\([^.=]*\)=amneziawg_$1\$/\1/p" | head -n1
+}
+
+iface_exists() {
+	[ "$(uci -q get "network.$1.proto" 2>/dev/null)" = "amneziawg" ]
+}
+
+iface_manual_off() {
+	[ "$(uci -q get "network.$1.auto" 2>/dev/null)" = "0" ] && [ ! -d "/sys/class/net/$1" ]
+}
+
+endpoint_of() { # iface
+	local p host port
+	p=$(peer_sec "$1") || return 1
+	[ -n "$p" ] || return 1
+	host=$(uci -q get "network.$p.endpoint_host")
+	port=$(uci -q get "network.$p.endpoint_port")
+	[ -n "$host" ] || return 1
+	case "$host" in
+		*:*) echo "[$host]:${port:-2408}" ;;
+		*) echo "$host:${port:-2408}" ;;
+	esac
+}
+
+hs_age_of() { # iface -> возраст рукопожатия (сек) или пусто
+	local hs ts
+	hs=$(awg show "$1" latest-handshakes 2>/dev/null | awk '$2 > 0 { print $2; exit }')
+	[ -n "$hs" ] || return 0
+	ts=$(date +%s)
+	echo $(( ts - hs ))
+}
+
+hs_age_of() { # iface -> возраст рукопожатия (сек) или пусто
+	local hs ts
+	hs=$(awg show "$1" latest-handshakes 2>/dev/null | awk '$2 > 0 { print $2; exit }')
+	[ -n "$hs" ] || return 0
+	ts=$(date +%s)
+	echo $(( ts - hs ))
+}
+
+# --- проверка доступности ---------------------------------------------------
+is_ru() { # colo [country]
+	case " $RU_COLOS " in *" $1 "*) return 0 ;; esac
+	[ "$2" = "RU" ] && return 0
+	return 1
+}
+
+wan_ok() {
+	local tr
+	tr=$(curl -s --connect-timeout 5 --max-time 10 "http://1.1.1.1/cdn-cgi/trace" 2>/dev/null)
+	[ -n "$tr" ] && return 0
+	tr=$(curl -s --connect-timeout 5 --max-time 10 -o /dev/null -w '%{http_code}' "http://connectivity-check.ubuntu.com/" 2>/dev/null)
+	[ "$tr" = "204" ] && return 0
+	return 1
+}
+
+_cf_meta() { # [iface] -> "colo country cca2 city"
+	local j c s k t ifargs=""
+	[ -n "$1" ] && ifargs="--interface $1"
+	j=$(curl -s $ifargs --connect-timeout 4 --max-time 8 -H 'Referer: https://speed.cloudflare.com' https://speed.cloudflare.com/meta 2>/dev/null)
+	case "$j" in *'"colo"'*) ;; *) return 1 ;; esac
+	c="$(jsonfilter -s "$j" -e '@.colo.iata' 2>/dev/null)"
+	[ -n "$c" ] || c="$(jsonfilter -s "$j" -e '@.colo' 2>/dev/null | grep -E '^[A-Z]{3}$')"
+	[ -n "$c" ] || return 1
+	s="$(jsonfilter -s "$j" -e '@.country' 2>/dev/null)"
+	k="$(jsonfilter -s "$j" -e '@.colo.cca2' 2>/dev/null)"
+	t="$(jsonfilter -s "$j" -e '@.colo.city' 2>/dev/null | tr -d '"\\\t\r\n')"
+	echo "$c ${s:--} ${k:--} ${t:--}"
+}
+
+_wac_probe() { # iface -> "loss rtt torn"
+	local out
+	out=$(ping -I "$1" -c 10 -i 0.2 -W 2 -w 8 1.1.1.1 2>/dev/null)
+	case "$out" in *"packet loss"*) ;; *) out=$(ping -I "$1" -c 5 -W 2 -w 10 1.1.1.1 2>/dev/null) ;; esac
+	case "$out" in *" 100% packet loss"*|'') out=$(ping -I "$1" -c 10 -i 0.2 -W 2 -w 8 8.8.8.8 2>/dev/null) ;; esac
+	printf '%s\n' "$out" | awk -v t=3 '
+		/seq=[0-9]/ { s = $0; sub(/.*seq=/, "", s); sub(/[^0-9].*/, "", s); s += 0; if (!got++ || s > hi) hi = s }
+		/packets transmitted/ { tx = $1 + 0 }
+		/packet loss/ { l = $0; sub(/%.*/, "", l); sub(/.*[^0-9]/, "", l); loss = l + 0; have = 1 }
+		/min\/avg/ { v = $0; sub(/.*= */, "", v); split(v, a, "/"); rtt = int(a[2]) }
+		END {
+			if (!have) loss = 100
+			torn = (got > 0 && tx > 0 && tx - 1 - hi >= t) ? 1 : 0
+			printf "%d %d %d\n", loss, (got > 0 && rtt > 0 ? rtt : 99999), torn
+		}'
+}
+
+_wac_trace_ip() { # iface -> "ip warp [colo country cca2 city]" (или пусто)
+	local tr ip warp meta
+	tr=$(curl -s --interface "$1" --connect-timeout 4 --max-time 6 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null)
+	[ -n "$tr" ] || tr=$(curl -s --interface "$1" --connect-timeout 4 --max-time 6 https://1.1.1.1/cdn-cgi/trace 2>/dev/null)
+	ip=$(printf '%s\n' "$tr" | sed -n 's/^ip=//p' | head -n1)
+	warp=$(printf '%s\n' "$tr" | sed -n 's/^warp=//p' | head -n1)
+	if [ -z "$ip" ]; then
+		tr=$(curl -s --interface "$1" --connect-timeout 3 --max-time 5 https://ipinfo.io/json 2>/dev/null)
+		ip=$(printf '%s' "$tr" | jsonfilter -e '@.ip' 2>/dev/null)
+	fi
+	[ -z "$ip" ] && ip=$(curl -s --interface "$1" --connect-timeout 3 --max-time 5 https://api.ipify.org 2>/dev/null | grep -Eo '^[0-9a-fA-F.:]{3,45}$' | head -n1)
+	[ -z "$ip" ] && return 1
+	meta="$(_cf_meta "$1")"
+	echo "$ip ${warp:-unknown} ${meta:-- - - -}"
+}
+
+iface_check() { # iface -> stdout "result|detail"
+	local out ip warp colo country loss rtt torn
+	out=$(_wac_trace_ip "$1")
+	ip=$(printf '%s\n' "$out" | awk '{print $1}')
+	warp=$(printf '%s\n' "$out" | awk '{print $2}')
+	colo=$(printf '%s\n' "$out" | awk '{print $3}')
+	country=$(printf '%s\n' "$out" | awk '{print $4}')
+	[ -n "$ip" ] || { echo "no-link|внешний IP через туннель не получен"; return 0; }
+	case "$warp" in on|plus) ;; *) echo "no-link|trace warp=${warp:-нет}"; return 0 ;; esac
+	set -- $(_wac_probe "$1")
+	loss="$1"; rtt="$2"; torn="$3"
+	if [ "${loss:-100}" -ge 100 ] 2>/dev/null; then echo "no-link|трафик через туннель не идёт (потери 100%)"; return 0; fi
+	if [ "$torn" = "1" ]; then echo "torn|потери ${loss}%, ${rtt} мс — поток обрывается (DPI)"; return 0; fi
+	if is_ru "$colo" "$country"; then echo "ru-colo|трафик идёт через российский узел ${colo:-?}"; return 0; fi
+	echo "ok|выход $ip, узел ${colo:-?}, потери ${loss}%, ${rtt} мс"
+}
+
+cmd_check() {
+	local conf iface res detail fails now ts
+	conf=$(cfg_get conf 2>/dev/null); [ -n "$conf" ] || conf="/root/WARP.conf"
+	[ -n "$WAC_CONF_OVERRIDE" ] && conf="$WAC_CONF_OVERRIDE"
+	iface=$(cfg_get interface 2>/dev/null); [ -n "$iface" ] || iface="warp"
+
+	ts=$(date +%s)
+	if ! iface_exists "$iface"; then
+		res="no-iface"; detail="интерфейс $iface не найден или не amneziawg"
+	elif iface_manual_off "$iface"; then
+		res="manual-off"; detail="интерфейс $iface выключен вручную"
+	elif ! wan_ok; then
+		res="wan-down"; detail="интернет недоступен — проверка отложена"
+	else
+		out=$(iface_check "$iface")
+		res="${out%%|*}"; detail="${out#*|}"
+	fi
+
+	fails=$(state_get fails); case "$fails" in ''|*[!0-9]*) fails=0 ;; esac
+	case "$res" in
+		ok) fails=0 ;;
+		no-link|torn|ru-colo) fails=$((fails + 1)) ;;
+	esac
+
+	state_set last_check "$ts"
+	state_set last_result "$res"
+	state_set last_detail "$detail"
+	state_set fails "$fails"
+
+	log "check: $res ($detail), fails=$fails"
+	printf '{"result":"%s","detail":"%s","fails":%s}\n' "$(esc "$res")" "$(esc "$detail")" "$fails"
+}
+
+# --- генерация с подбором ---------------------------------------------------
+_i1_hex() { if command -v hexdump >/dev/null 2>&1; then hexdump -ve '1/1 "%02x"'; else od -An -v -tx1 | tr -d ' \n'; fi; }
+_i1_num() {
+	awk -v a="$1" -v b="$2" -v s="$(head -c 4 /dev/urandom | _i1_hex)" 'BEGIN { x = 0; for (i = 1; i <= length(s); i++) x = x * 16 + index("0123456789abcdef", substr(s, i, 1)) - 1; srand(x); print a + int(rand() * (b - a + 1)) }'
+}
+_i1_str() { tr -dc 'a-z0-9' < /dev/urandom 2>/dev/null | head -c "$1"; }
+_i1_host() { set -- $AWG_I1_HOSTS; eval "echo \"\${$(_i1_num 1 $#)}\""; }
+_i1_dns() {
+	local h="$(_i1_host)" q="" l p
+	for l in $(echo "$h" | tr '.' ' '); do q="$q$(printf '%02x' "${#l}")$(printf '%s' "$l" | _i1_hex)"; done
+	p="$(_i1_num 60 180)"
+	printf '<r 2><b 0x01000001000000000001%s0000010001000029100000000000%04x000c%04x><r %d>' "$q" $((p + 4)) "$p" "$p"
+}
+_i1_stun() {
+	local s
+	s=$(( $(_i1_num 4 8) * 4 ))
+	printf '<b 0x0001%04x2112a442><r 12><b 0x8022%04x%s>' $((s + 4)) "$s" "$(_i1_str "$s" | _i1_hex)"
+}
+_i1_sip() {
+	local h="$(_i1_host)"
+	printf '<b 0x%s>' "$(printf '%s\r\n' \
+		"OPTIONS sip:$h SIP/2.0" \
+		"Via: SIP/2.0/UDP 192.168.$(_i1_num 0 255).$(_i1_num 2 254):5060;branch=z9hG4bK$(_i1_str 10)" \
+		"From: <sip:$(_i1_str 8)@$h>;tag=$(_i1_num 100000 999999)" \
+		"To: <sip:$h>" \
+		"Call-ID: $(_i1_str 16)@$h" \
+		"CSeq: $(_i1_num 1000 9999) OPTIONS" \
+		"Max-Forwards: 70" \
+		"User-Agent: PJSIP/2.13" \
+		"Content-Length: 0" \
+		"" | _i1_hex)"
+}
+
+AWG_NO_I1=0
+try_conf() { # dev priv ip endpoint mask [peer] -> 0 hs ok / 1 нет / 2 модуль не загружен
+	local dev="$1" conf="$AWG_RUN_DIR/try.conf" hs i=0 i1="$5" peer="${6:-$AWG_WARP_PEER}"
+	AWG_NO_I1=0
+	ip link del "$dev" >/dev/null 2>&1
+	ip link add dev "$dev" type amneziawg >/dev/null 2>&1 || return 2
+	ip link set "$dev" mtu 1280 >/dev/null 2>&1
+	ip addr add "$3/32" dev "$dev" >/dev/null 2>&1
+	ip link set "$dev" up >/dev/null 2>&1
+	printf '%s\n' "[Interface]" "PrivateKey = $2" \
+		"Jc = $MIXOMO_AWG_JC" "Jmin = $MIXOMO_AWG_JMIN" "Jmax = $MIXOMO_AWG_JMAX" "S1 = $MIXOMO_AWG_S1" "S2 = $MIXOMO_AWG_S2" \
+		"H1 = $MIXOMO_AWG_H1" "H2 = $MIXOMO_AWG_H2" "H3 = $MIXOMO_AWG_H3" "H4 = $MIXOMO_AWG_H4" ${i1:+"I1 = $i1"} "" \
+		"[Peer]" "PublicKey = $peer" "AllowedIPs = 0.0.0.0/0" "Endpoint = $4" "PersistentKeepalive = 5" > "$conf"
+	if ! awg setconf "$dev" "$conf" >/dev/null 2>&1; then
+		if [ -n "$i1" ] && sed -i '/^I1 = /d' "$conf" 2>/dev/null && awg setconf "$dev" "$conf" >/dev/null 2>&1; then
+			AWG_NO_I1=1
+			log "модуль AmneziaWG не знает маску I1 — пробуем без неё"
+		else
+			rm -f "$conf"; return 1
+		fi
+	fi
+	rm -f "$conf"
+	while [ "$i" -lt "$AWG_TRY_WAIT" ]; do
+		hs=$(awg show "$dev" latest-handshakes 2>/dev/null | awk '{ print $2; exit }')
+		[ "${hs:-0}" -gt 0 ] 2>/dev/null && return 0
+		sleep 0.5 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	return 1
+}
+
+try_down() { ip link del "$1" >/dev/null 2>&1; }
+
+_cf_api_ok() { # [curl-args] -> код не 000?
+	local code
+	code=$(curl -s --connect-timeout 5 --max-time 8 "$@" -o /dev/null -w '%{http_code}' "$AWG_API/" 2>/dev/null)
+	[ -n "$code" ] && [ "$code" != "000" ]
+}
+
+keys_register() { # [curl-args] -> G_PRIV/G_PEER/G_V4/G_V6
+	local reg="$AWG_RUN_DIR/reg.$$" api code id tok
+	local K_PRIV K_PUB
+	mkdir -p "$AWG_RUN_DIR"
+	K_PRIV=$(awg genkey 2>/dev/null)
+	[ -n "$K_PRIV" ] || { log "нет утилиты awg"; return 1; }
+	K_PUB=$(printf '%s' "$K_PRIV" | awg pubkey 2>/dev/null)
+	[ -n "$K_PUB" ] || { log "awg pubkey не сработал"; return 1; }
+	G_PRIV="$K_PRIV"; G_PUB="$K_PUB"
+
+	# 1) Cloudflare API напрямую (или через переданные curl-args)
+	rm -f "$reg"
+	code=$(curl -s --connect-timeout 6 --max-time 25 "$@" -X POST \
+		-H 'Content-Type: application/json' -H "User-Agent: okhttp/3.12.1" -H "CF-Client-Version: $AWG_CF_VER" -H 'Accept-Encoding: identity' \
+		-d "{\"key\":\"$G_PUB\",\"install_id\":\"\",\"fcm_token\":\"\",\"tos\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"type\":\"Android\",\"model\":\"\",\"locale\":\"en_US\"}" \
+		-o "$reg" -w '%{http_code}' "$AWG_API" 2>/dev/null)
+	case "$code" in
+		200|201)
+			id=$(jsonfilter -i "$reg" -e '@.result.id' 2>/dev/null)
+			tok=$(jsonfilter -i "$reg" -e '@.result.token' 2>/dev/null)
+			G_PEER=$(jsonfilter -i "$reg" -e '@.result.config.peers[0].public_key' 2>/dev/null)
+			G_V4=$(jsonfilter -i "$reg" -e '@.result.config.interface.addresses.v4' 2>/dev/null)
+			G_V6=$(jsonfilter -i "$reg" -e '@.result.config.interface.addresses.v6' 2>/dev/null)
+			if [ -n "$id" ] && [ -n "$tok" ]; then
+				code=$(curl -s --connect-timeout 6 --max-time 15 "$@" -X PATCH \
+					-H 'Content-Type: application/json' -H "User-Agent: okhttp/3.12.1" -H "CF-Client-Version: $AWG_CF_VER" -H "Authorization: Bearer $tok" \
+					-d '{"warp_enabled":true}' -o /dev/null -w '%{http_code}' "$AWG_API/$id" 2>/dev/null)
+				case "$code" in
+					2??) rm -f "$reg"; log "ключи выданы Cloudflare"; return 0 ;;
+					*) log "Cloudflare: ключ выдан, WARP не включился ($code)" ;;
+				esac
+			else
+				log "Cloudflare: в ответе нет id/token"
+			fi
+			;;
+		*) log "Cloudflare: ответ ${code:-нет связи}" ;;
+	esac
+	rm -f "$reg"
+
+	# 2) внешний генератор (его собственная пара ключей, как в ZM)
+	reg="$AWG_RUN_DIR/ext.$$"
+	if curl -fsSL --connect-timeout 10 --max-time 30 "$WARP_PRIMARY" -o "$reg" 2>/dev/null; then
+		E_PRIV=$(grep -o '"key"[[:space:]]*:[[:space:]]*"[^"]*"' "$reg" 2>/dev/null | head -n1 | sed 's/.*:[[:space:]]*"//;s/"$//')
+		E_PEER=$(grep -o '"public_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$reg" 2>/dev/null | head -n1 | sed 's/.*:[[:space:]]*"//;s/"$//')
+		E_V4=$(grep -o '"v4"[[:space:]]*:[[:space:]]*"[^"]*"' "$reg" 2>/dev/null | sed -n '2p' | sed 's/.*:[[:space:]]*"//;s/"$//')
+		E_V6=$(grep -o '"v6"[[:space:]]*:[[:space:]]*"[^"]*"' "$reg" 2>/dev/null | sed -n '2p' | sed 's/.*:[[:space:]]*"//;s/"$//')
+		rm -f "$reg"
+		[ -n "$E_PRIV" ] && [ -n "$E_PEER" ] && [ -n "$E_V4" ] && {
+			G_PRIV="$E_PRIV"; G_PEER="$E_PEER"; G_V4="$E_V4"; G_V6="$E_V6"
+			log "ключи получены от внешнего генератора"; return 0
+		}
+		log "внешний генератор: в ответе нет ключей"
+	else
+		log "внешний генератор не ответил"
+	fi
+
+	# 3) через живой amneziawg-интерфейс
+	local i a
+	for i in $(uci -q show network 2>/dev/null | sed -n "s/^network\.\([a-z0-9_]*\)\.proto='amneziawg'\$/\1/p"); do
+		a=$(hs_age_of "$i")
+		case "$a" in ''|*) continue ;; esac
+		[ "$a" -lt 180 ] 2>/dev/null || continue
+		if _cf_api_ok "--interface $i"; then
+			log "Cloudflare доступен через туннель $i"
+			keys_register "--interface $i" && return 0
+		fi
+	done
+
+	# 4) временный boot-туннель на общих ключах
+	local host port m
+	for host in 188.114.96.3 162.159.192.1 188.114.97.1; do
+		for port in $AWG_TEST_PORTS; do
+			for m in "$MIXOMO_AWG_I1" "$AWG_I1_ICLOUD" "$AWG_I1_QUIC1"; do
+				try_conf "$AWG_TEST_IF" "$AWG_BOOT_PRIV" "$AWG_BOOT_IP" "$host:$port" "$m" || continue
+				if _cf_api_ok "--interface $AWG_TEST_IF"; then
+					try_down "$AWG_TEST_IF"
+					log "boot-туннель поднят: $host:$port"
+					keys_register "--interface $AWG_TEST_IF" && return 0
+					return 1
+				fi
+				try_down "$AWG_TEST_IF"
+			done
+		done
+	done
+	return 1
+}
+
+_rand_hosts() { # n -> случайные hosts из пулов
+	awk -v n="$1" -v pools="$ST_WARP_POOLS" -v seed="$(date +%s)$$" 'BEGIN {
+		srand(seed); c = split(pools, p, " ")
+		for (i = 1; i <= c; i++) for (k = 0; k < n; k++) printf "%s%d\n", p[i], 2 + int(rand() * 253)
+	}' | sort -u
+}
+
+_warp_conf_i1() { # текущая маска из WARP.conf
+	[ -n "$CONF_FILE" ] && [ -f "$CONF_FILE" ] && sed -n 's/^I1 = //p' "$CONF_FILE" | head -n1
+}
+
+pick_endpoint() { # priv v4 [hint_ep] [hint_mask] -> BEST_EP/BEST_MASK; 0 найдено / 1 нет
+	local priv="$1" v4="$2" host port m ep
+	local t0=$(date +%s) tries=0 rucnt=0
+	local masks="" cur
+	cur="$(_warp_conf_i1)"
+	[ -n "$cur" ] && masks="$cur"
+	masks="$masks
+$MIXOMO_AWG_I1
+$AWG_I1_ICLOUD
+$AWG_I1_QUIC1
+$(_i1_dns)
+$(_i1_stun)
+$(_i1_sip)"
+	local h1="${BEST_HINT_EP%%:*}"
+	[ -n "$h1" ] || h1="${AWG_TEST_HOSTS%% *}"
+	local hosts="$h1 $AWG_TEST_HOSTS $(_rand_hosts 2)"
+
+	for host in $hosts; do
+		[ "$rucnt" -ge 12 ] && break
+		for port in $AWG_TEST_PORTS; do
+			ep="$host:$port"
+			local nl='
+'
+			local oifs="$IFS"
+			IFS="$nl"
+			for m in $masks; do
+				IFS="$oifs"
+				tries=$((tries + 1))
+				[ "$tries" -gt 80 ] && return 1
+				[ $(( $(date +%s) - t0 )) -gt 420 ] && return 1
+				if try_conf "$AWG_TEST_IF" "$priv" "$v4" "$ep" "$m" "$G_PEER"; then
+					# трафик реально идёт через туннель? (trace, как _awg_trace в ZM)
+					local tout
+					tout=$(_wac_trace_ip "$AWG_TEST_IF") || continue
+					local tip twarp
+					tip=$(printf '%s\n' "$tout" | awk '{print $1}')
+					twarp=$(printf '%s\n' "$tout" | awk '{print $2}')
+					[ -n "$tip" ] || { log "$ep — рукопожатие есть, trace не идёт"; continue; }
+					case "$twarp" in on|plus) ;; *) log "$ep — trace warp=${twarp:-нет}"; continue ;; esac
+					set -- $(_wac_probe "$AWG_TEST_IF")
+					local loss="$1" torn="$3"
+					if [ "${loss:-100}" -ge 100 ] 2>/dev/null; then
+						log "$ep — рукопожатие есть, трафика нет"
+						continue
+					fi
+					if [ "$torn" = "1" ]; then
+						log "$ep — трафик обрывается (DPI)"
+						continue
+					fi
+					local meta colo country
+					set -- $(_cf_meta "$AWG_TEST_IF")
+					colo="$1"; country="$2"
+					if is_ru "$colo" "$country"; then
+						rucnt=$((rucnt + 1))
+						log "$ep — трафик через российский узел $colo, ищем зарубежный"
+						break 2
+					fi
+					BEST_EP="$ep"; BEST_MASK="$m"
+					log "найдена точка: $ep, узел $colo"
+					return 0
+				fi
+			done
+			IFS="$oifs"
+		done
+	done
+	return 1
+}
+
+conf_write() { # priv peer v4 v6 endpoint mask outfile
+	printf '%s\n' \
+		"[Interface]" "PrivateKey = $1" "Address = ${3}${4:+, $4}" "DNS = 1.1.1.1, 1.0.0.1" "MTU = 1280" \
+		"S1 = $MIXOMO_AWG_S1" "S2 = $MIXOMO_AWG_S2" "Jc = $MIXOMO_AWG_JC" "Jmin = $MIXOMO_AWG_JMIN" "Jmax = $MIXOMO_AWG_JMAX" \
+		"H1 = $MIXOMO_AWG_H1" "H2 = $MIXOMO_AWG_H2" "H3 = $MIXOMO_AWG_H3" "H4 = $MIXOMO_AWG_H4" "I1 = ${6:-$MIXOMO_AWG_I1}" "" \
+		"[Peer]" "PublicKey = $2" "AllowedIPs = 0.0.0.0/0, ::/0" "Endpoint = $5" "PersistentKeepalive = 25" \
+		> "$7"
+	chmod 600 "$7" 2>/dev/null
+}
+
+uci_snapshot() { # outfile — сохранить текущие ключи интерфейса для отката
+	local p; p=$(peer_sec "$IFACE")
+	{
+		echo "network.$IFACE.private_key=$(uci -q get "network.$IFACE.private_key")"
+		if [ -n "$p" ]; then
+			echo "network.$p.public_key=$(uci -q get "network.$p.public_key")"
+			echo "network.$p.endpoint_host=$(uci -q get "network.$p.endpoint_host")"
+			echo "network.$p.endpoint_port=$(uci -q get "network.$p.endpoint_port")"
+		fi
+		for o in awg_jc awg_jmin awg_jmax awg_s1 awg_s2 awg_h1 awg_h2 awg_h3 awg_h4 awg_i1; do
+			echo "network.$IFACE.$o=$(uci -q get "network.$IFACE.$o")"
+		done
+	} > "$1"
+}
+
+uci_restore() { # infile — откат
+	local kv k v p
+	p=$(peer_sec "$IFACE")
+	while IFS='=' read -r kv v; do
+		[ -n "$kv" ] || continue
+		case "$kv" in
+			network.*.*)
+				k="${kv#network.}"; k="${k#*.}"
+				sec="${kv#network.}"; sec="${sec%%.*}"
+				if [ "$sec" = "$IFACE" ] || [ "$sec" = "$p" ]; then
+					uci set "$kv=$v"
+				fi
+				;;
+		esac
+	done < "$1"
+	uci commit network
+}
+
+apply_iface() { # conf iface — применить ключи/endpoint/маски из нового конфига
+	local conf="$1" iface="$2" p priv pub ep host port mask
+	p=$(peer_sec "$iface")
+	[ -n "$p" ] || { p="${iface}_peer"; uci set "network.$p=amneziawg_$iface"; }
+	priv=$(awk '/^\[Interface\]/{s=1;next}/^\[/{s=0}s && /^PrivateKey = /{print substr($0, 14); exit}' "$conf")
+	pub=$(awk '/^\[Peer\]/{s=1;next}/^\[/{s=0}s && /^PublicKey = /{print substr($0, 13); exit}' "$conf")
+	ep=$(awk '/^\[Peer\]/{s=1;next}/^\[/{s=0}s && /^Endpoint = /{print substr($0, 12); exit}' "$conf")
+	mask=$(sed -n 's/^I1 = //p' "$conf" | head -n1)
+	[ -n "$priv" ] && [ -n "$pub" ] && [ -n "$ep" ] || return 1
+	case "$ep" in
+		\[*\]:*) host="${ep%]:*}"; host="${host#\[}"; port="${ep##*]:}" ;;
+		?*:*) host="${ep%:*}"; port="${ep##*:}" ;;
+		*) return 1 ;;
+	esac
+	uci set "network.$iface.private_key=$priv"
+	uci set "network.$p.public_key=$pub"
+	uci set "network.$p.endpoint_host=$host"
+	uci set "network.$p.endpoint_port=$port"
+	# параметры маскировки — константы пакета
+	uci set "network.$iface.awg_jc=$MIXOMO_AWG_JC"
+	uci set "network.$iface.awg_jmin=$MIXOMO_AWG_JMIN"
+	uci set "network.$iface.awg_jmax=$MIXOMO_AWG_JMAX"
+	uci set "network.$iface.awg_s1=$MIXOMO_AWG_S1"
+	uci set "network.$iface.awg_s2=$MIXOMO_AWG_S2"
+	uci set "network.$iface.awg_h1=$MIXOMO_AWG_H1"
+	uci set "network.$iface.awg_h2=$MIXOMO_AWG_H2"
+	uci set "network.$iface.awg_h3=$MIXOMO_AWG_H3"
+	uci set "network.$iface.awg_h4=$MIXOMO_AWG_H4"
+	[ -n "$mask" ] && uci set "network.$iface.awg_i1=$mask" || uci -q delete "network.$iface.awg_i1"
+	uci commit network
+	return 0
+}
+
+cmd_regen() {
+	local conf iface res detail now
+	conf=$(cfg_get conf 2>/dev/null); [ -n "$conf" ] || conf="/root/WARP.conf"
+	[ -n "$WAC_CONF_OVERRIDE" ] && conf="$WAC_CONF_OVERRIDE"
+	CONF_FILE="$conf"
+	iface=$(cfg_get interface 2>/dev/null); [ -n "$iface" ] || iface="warp"
+	IFACE="$iface"
+
+	if ! acquire_lock; then
+		printf '{"result":"skipped:busy"}\n'; return 0
+	fi
+	G_PRIV=""; G_PEER=""; G_V4=""; G_V6=""; BEST_EP=""; BEST_MASK=""
+	G_PUB=""; BEST_HINT_EP=""
+
+	if ! iface_exists "$iface" || iface_manual_off "$iface"; then
+		release_lock
+		printf '{"result":"skipped:no-iface"}\n'; return 0
+	fi
+
+	log "regen: получаем ключи"
+	if ! keys_register; then
+		release_lock
+		log "regen: ключи получить не удалось"
+		state_set last_result "regen-failed"
+		state_set last_detail "ключи WARP получить не удалось — ни один источник не ответил"
+		printf '{"result":"regen-failed"}\n'
+		return 0
+	fi
+	log "regen: ключи получены, адрес $G_V4"
+
+	if ! pick_endpoint "$G_PRIV" "$G_V4"; then
+		try_down "$AWG_TEST_IF"
+		release_lock
+		log "regen: зарубежная точка не найдена — старый конфиг не трогаем"
+		state_set last_result "not-helped"
+		state_set last_detail "зарубежных точек нет — конфиг не заменён"
+		printf '{"result":"not-helped"}\n'
+		return 0
+	fi
+	try_down "$AWG_TEST_IF"
+
+	local newconf="$conf.new"
+	conf_write "$G_PRIV" "$G_PEER" "$G_V4" "$G_V6" "$BEST_EP" "$BEST_MASK" "$newconf"
+
+	# бэкап + атомарная замена
+	cp -f "$conf" "$conf.bak" 2>/dev/null
+	uci_snapshot "$conf.bak.uci"
+	mv -f "$newconf" "$conf"
+	chmod 600 "$conf" 2>/dev/null
+	log "regen: конфиг заменен, точка $BEST_EP, применяем интерфейс $iface"
+
+	if ! apply_iface "$conf" "$iface"; then
+		release_lock
+		log "regen: не удалось применить конфиг к интерфейсу — откат"
+		cp -f "$conf.bak" "$conf" 2>/dev/null
+		uci_restore "$conf.bak.uci"
+		ifup "$iface" >/dev/null 2>&1
+		state_set last_result "rolled-back"
+		printf '{"result":"rolled-back"}\n'
+		return 0
+	fi
+	ifup "$iface" >/dev/null 2>&1
+
+	sleep 15
+	out=$(iface_check "$iface")
+	res="${out%%|*}"; detail="${out#*|}"
+	release_lock
+	if [ "$res" = "ok" ]; then
+		state_set fails 0
+		state_set last_replace "$(date +%s)"
+		state_set last_result "replaced"
+		state_set last_detail "новый конфиг: $detail"
+		log "regen: готово — $detail"
+		printf '{"result":"replaced","detail":"%s"}\n' "$(esc "$detail")"
+	else
+		log "regen: пост-проверка не прошла ($detail) — откат на старый конфиг"
+		cp -f "$conf.bak" "$conf" 2>/dev/null
+		uci_restore "$conf.bak.uci"
+		ifup "$iface" >/dev/null 2>&1
+		state_set last_result "rolled-back"
+		state_set last_detail "новый конфиг не заработал ($detail) — откат"
+		printf '{"result":"rolled-back"}\n'
+	fi
+	return 0
+}
+
+cmd_status() {
+	local conf iface conf_exists=false iface_exists=false manual_off=false
+	local endpoint="" hs_age="" enabled=false interval=6 retries=2
+	local last_check=0 last_result="none" last_detail="" last_replace=0 fails=0 running=false uptime
+
+	conf=$(cfg_get conf 2>/dev/null); [ -n "$conf" ] || conf="/root/WARP.conf"
+	[ -n "$WAC_CONF_OVERRIDE" ] && conf="$WAC_CONF_OVERRIDE"
+	iface=$(cfg_get interface 2>/dev/null); [ -n "$iface" ] || iface="warp"
+
+	[ -s "$conf" ] && conf_exists=true
+	if iface_exists "$iface"; then
+		iface_exists=true
+		endpoint=$(endpoint_of "$iface")
+		hs_age=$(hs_age_of "$iface")
+		iface_manual_off "$iface" && manual_off=true
+	fi
+	[ "$(cfg_get enabled 2>/dev/null)" = "1" ] && enabled=true
+	interval=$(cfg_get interval 2>/dev/null); case "$interval" in ''|*[!0-9]*) interval=6 ;; esac
+	retries=$(cfg_get retries 2>/dev/null); case "$retries" in ''|*[!0-9]*) retries=2 ;; esac
+
+	last_check=$(state_get last_check); case "$last_check" in ''|*[!0-9]*) last_check=0 ;; esac
+	last_result=$(state_get last_result); [ -n "$last_result" ] || last_result="none"
+	last_detail=$(state_get last_detail)
+	last_replace=$(state_get last_replace); case "$last_replace" in ''|*[!0-9]*) last_replace=0 ;; esac
+	fails=$(state_get fails); case "$fails" in ''|*[!0-9]*) fails=0 ;; esac
+	lock_alive && running=true
+	uptime=$(uptime_now)
+
+	printf '{"conf_exists":%s,"iface":"%s","iface_exists":%s,"iface_manual_off":%s,"endpoint":"%s","hs_age":%s,"enabled":%s,"interval":%s,"retries":%s,"conf":"%s","last_check":%s,"last_result":"%s","last_detail":"%s","last_replace":%s,"fails":%s,"running":%s,"uptime":%s}\n' \
+		"$conf_exists" "$(esc "$iface")" "$iface_exists" "$manual_off" "$(esc "$endpoint")" \
+		"${hs_age:-null}" "$enabled" "$interval" "$retries" "$(esc "$conf")" \
+		"$last_check" "$(esc "$last_result")" "$(esc "$last_detail")" "$last_replace" "$fails" \
+		"$running" "${uptime:-0}"
+}
+
+# --- settings ----------------------------------------------------------------
+get_settings() {
+	local enabled=false interval=6 interface="warp" retries=2 conf
+	[ "$(cfg_get enabled 2>/dev/null)" = "1" ] && enabled=true
+	interval=$(cfg_get interval 2>/dev/null); case "$interval" in ''|*[!0-9]*) interval=6 ;; esac
+	interface=$(cfg_get interface 2>/dev/null); [ -n "$interface" ] || interface="warp"
+	retries=$(cfg_get retries 2>/dev/null); case "$retries" in ''|*[!0-9]*) retries=2 ;; esac
+	conf=$(cfg_get conf 2>/dev/null); [ -n "$conf" ] || conf="/root/WARP.conf"
+	printf '{"enabled":%s,"interval":%s,"interface":"%s","retries":%s,"conf":"%s"}\n' \
+		"$enabled" "$interval" "$(esc "$interface")" "$retries" "$(esc "$conf")"
+}
+
+set_settings() { # enabled interval interface retries
+	local enabled="$1" interval="$2" interface="$3" retries="$4"
+	case "$enabled" in 0|1) ;; *) printf '{"error":"enabled: 0 или 1"}\n'; return 1 ;; esac
+	case "$interval" in ''|*[!0-9]*) printf '{"error":"интервал: часы (1–168)"}\n'; return 1 ;; esac
+	[ "$interval" -ge 1 ] 2>/dev/null && [ "$interval" -le 168 ] 2>/dev/null || { printf '{"error":"интервал: часы (1–168)"}\n'; return 1; }
+	if ! printf '%s' "$interface" | LC_ALL=C grep -qE '^[a-z][a-z0-9_]{0,10}$'; then
+		printf '{"error":"имя интерфейса: латиница в нижнем регистре, цифры и _, до 11 символов"}\n'; return 1
+	fi
+	case "$retries" in ''|*[!0-9]*) printf '{"error":"повторы: 0–3"}\n'; return 1 ;; esac
+	[ "$retries" -le 3 ] 2>/dev/null || { printf '{"error":"повторы: 0–3"}\n'; return 1; }
+	uci set "warp-autocheck.main.enabled=$enabled"
+	uci set "warp-autocheck.main.interval=$interval"
+	uci set "warp-autocheck.main.interface=$interface"
+	uci set "warp-autocheck.main.retries=$retries"
+	uci commit warp-autocheck
+	log "settings: enabled=$enabled interval=$interval interface=$interface retries=$retries"
+	printf '{"ok":true}\n'
+}
+
+# --- log --------------------------------------------------------------------
+cmd_log() {
+	[ -f "$WAC_LOG_FILE" ] || return 0
+	tail -n 100 "$WAC_LOG_FILE"
+}
+
+# --- main -------------------------------------------------------------------
+cmd_run() {
+	! acquire_lock && return 0
+	local enabled up interval now last out res attempt=0 max retries
+	enabled=$(cfg_get enabled 2>/dev/null)
+	[ "$enabled" = "1" ] || { release_lock; return 0; }
+	up=$(uptime_now)
+	[ "${up:-0}" -ge 900 ] || { release_lock; log "run: грейс после загрузки (${up:-0} сек) — пропуск"; return 0; }
+	interval=$(cfg_get interval 2>/dev/null); case "$interval" in ''|*[!0-9]*) interval=6 ;; esac
+	now=$(date +%s)
+	last=$(state_get last_check); case "$last" in ''|*[!0-9]*) last=0 ;; esac
+	[ $((now - last)) -ge $((interval * 3600 - 300)) ] || { release_lock; return 0; }
+
+	retries=$(cfg_get retries 2>/dev/null); case "$retries" in ''|*[!0-9]*) retries=2 ;; esac
+	max=$((retries + 1))
+	while [ "$attempt" -lt "$max" ]; do
+		out=$(cmd_check)
+		res=$(printf '%s' "$out" | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
+		case "$res" in
+			no-link|torn|ru-colo)
+				attempt=$((attempt + 1))
+				[ "$attempt" -lt "$max" ] && sleep 300
+				;;
+			*) release_lock; return 0 ;;
+		esac
+	done
+	log "run: конфиг мертв после $max проверок — запускаем регенерацию"
+	cmd_regen
+	release_lock
+	return 0
+}
+
+case "$1" in
+	status) cmd_status ;;
+	log) cmd_log ;;
+	check) cmd_check ;;
+	get_settings) get_settings ;;
+	set_settings) shift; set_settings "$@" ;;
+	regen) cmd_regen ;;
+	run) cmd_run ;;
+	*) echo "usage: warp-autocheck {status|check|run|regen|log}" >&2; exit 1 ;;
+esac

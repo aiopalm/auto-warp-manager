@@ -1,0 +1,63 @@
+#!/bin/sh
+# Стаб curl: ответы из WAC_TEST_ROOT/curl/, каждое имя файла — «слаг» URL.
+# Пример: URL https://www.cloudflare.com/cdn-cgi/trace -> файл
+#   $WAC_TEST_ROOT/curl/https_www.cloudflare.com_cdn-cgi_trace
+# Каждый вызов дописывается в WAC_TEST_ROOT/curl.log
+# Поддержка -o <file> и -w '%{http_code}'.
+ROOT="${WAC_TEST_ROOT:?WAC_TEST_ROOT not set}"
+OUTFILE=""
+FMT=""
+LOGF="$ROOT/curl.log"
+mkdir -p "$ROOT/curl" 2>/dev/null
+echo "curl $*" >> "$LOGF" 2>/dev/null
+
+ARGS=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-o) OUTFILE="$2"; shift 2 ;;
+		-w) FMT="$2"; shift 2 ;;
+		--interface) shift 2 ;;
+		-f) FORCE=1; shift ;;
+	-*) shift ;;
+		*) ARGS="$1"; shift ;;
+	esac
+done
+URL="$ARGS"
+case "$URL" in
+	https://*) URL="${URL#https://}" ;;
+	http://*) URL="${URL#http://}" ;;
+esac
+SLUG=$(echo "$URL" | sed 's#[/:]#_#g; s#[?#].*$##')
+SRC="$ROOT/curl/$SLUG"
+RESP=""
+# seq-режим: если есть каталог $SRC.seq.d — N-й вызов возвращает содержимое N-го файла
+if [ -d "$SRC.seq.d" ]; then
+	CNTF="$SRC.count"
+	N=1
+	[ -f "$CNTF" ] && N=$(( $(cat "$CNTF") + 1 ))
+	echo "$N" > "$CNTF"
+	F="$SRC.seq.d/$(printf '%04d' "$N")"
+	[ -f "$F" ] && RESP=$(cat "$F")
+elif [ -f "$SRC.seq" ]; then
+	CNTF="$SRC.count"
+	N=1
+	[ -f "$CNTF" ] && N=$(( $(cat "$CNTF") + 1 ))
+	echo "$N" > "$CNTF"
+	RESP=$(sed -n "${N}p" "$SRC.seq")
+else
+	[ -f "$SRC" ] && RESP=$(cat "$SRC")
+fi
+CODE="200"
+[ -z "$RESP" ] && CODE="000"
+if [ -n "$FMT" ]; then
+	case "$FMT" in *http_code*) printf '%s' "$CODE" ;; esac
+fi
+if [ "$FORCE" = "1" ] && [ -z "$RESP" ]; then
+	exit 22
+fi
+if [ -n "$OUTFILE" ]; then
+	[ -n "$RESP" ] && printf '%s\n' "$RESP" > "$OUTFILE"
+else
+	[ -n "$RESP" ] && printf '%s\n' "$RESP"
+fi
+exit 0

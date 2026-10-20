@@ -1,0 +1,29 @@
+{
+	"luci-app-warp-autocheck": {
+		"description": "Grant access to the WARP AutoCheck backend",
+		"read": {
+			"ubus": {
+				"luci.warp-autocheck": [
+					"status",
+					"log",
+					"get_settings"
+				]
+			},
+			"uci": [
+				"warp-autocheck"
+			]
+		},
+		"write": {
+			"ubus": {
+				"luci.warp-autocheck": [
+					"check",
+					"regen",
+					"set_settings"
+				]
+			},
+			"uci": [
+				"warp-autocheck"
+			]
+		}
+	}
+}

@@ -1,0 +1,45 @@
+#!/bin/sh /etc/rc.common
+# WARP AutoCheck — управление cron-строкой автопроверки
+
+START=99
+STOP=10
+
+CRON_MARK="# warp-autocheck"
+CRON_LINE="* 0 * * * /usr/bin/warp-autocheck run $CRON_MARK"
+CRONTABS_FILE="${CRONTABS_FILE:-/etc/crontabs/root}"
+CRON_INIT="${CRON_INIT:-/etc/init.d/cron}"
+
+cron_ensure() {
+	mkdir -p "$(dirname "$CRONTABS_FILE")"
+	[ -f "$CRONTABS_FILE" ] || : > "$CRONTABS_FILE"
+	if ! grep -qF "$CRON_MARK" "$CRONTABS_FILE" 2>/dev/null; then
+		echo "$CRON_LINE" >> "$CRONTABS_FILE"
+	fi
+}
+
+cron_remove() {
+	[ -f "$CRONTABS_FILE" ] || return 0
+	sed -i "/$CRON_MARK\$/d" "$CRONTABS_FILE" 2>/dev/null || \
+		grep -vF "$CRON_MARK" "$CRONTABS_FILE" > "$CRONTABS_FILE.tmp" && \
+		mv -f "$CRONTABS_FILE.tmp" "$CRONTABS_FILE"
+	return 0
+}
+
+reload_cron() {
+	[ -x "$CRON_INIT" ] && "$CRON_INIT" restart >/dev/null 2>&1
+	return 0
+}
+
+start() {
+	cron_ensure
+	reload_cron
+}
+
+stop() {
+	cron_remove
+	reload_cron
+}
+
+restart() {
+	start
+}

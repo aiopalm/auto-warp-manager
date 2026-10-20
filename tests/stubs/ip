@@ -1,0 +1,8 @@
+#!/bin/sh
+# Стаб ip: логирует команды link add/del
+echo "ip $*" >> "${WAC_TEST_ROOT:?}/actions.log" 2>/dev/null
+case "$*" in
+	*link*del*) exit 0 ;;
+	*link*add*) exit 0 ;;
+	*) exit 0 ;;
+esac

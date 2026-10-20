@@ -1,0 +1,46 @@
+#!/bin/sh
+# Стаб jsonfilter (OpenWrt): -e '@.path.to' и -s '<json-строка>' | -i file
+exec python3 -c '
+import sys, json
+args = sys.argv[1:]
+data = None
+paths = []
+i = 0
+while i < len(args):
+    if args[i] == "-e": paths.append(args[i+1]); i += 2
+    elif args[i] == "-s":
+        try: data = json.loads(args[i+1])
+        except Exception: pass
+        i += 2
+    elif args[i] == "-i":
+        try: data = json.load(open(args[i+1]))
+        except Exception: pass
+        i += 2
+    else: i += 1
+if data is None:
+    try: data = json.load(sys.stdin)
+    except Exception: sys.exit(0)
+for path in paths:
+    cur = data
+    for part in path.lstrip("@.").split("."):
+        idx = None
+        if "[" in part:
+            base, bracket = part.split("[", 1)
+            try:
+                idx = int(bracket.rstrip("]"))
+            except Exception:
+                idx = None
+            part = base
+        if isinstance(cur, dict) and part in cur: cur = cur[part]
+        elif isinstance(cur, list):
+            try: cur = cur[int(part)]
+            except Exception: cur = None
+        else: cur = None
+        if cur is not None and idx is not None:
+            if isinstance(cur, list):
+                try: cur = cur[idx]
+                except Exception: cur = None
+        if cur is None: break
+    if cur is not None and not isinstance(cur, (dict, list)):
+        print(cur)
+' "$@"
