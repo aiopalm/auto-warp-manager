@@ -392,19 +392,22 @@ keys_register() { # [curl-args] -> G_PRIV/G_PEER/G_V4/G_V6
 		log "внешний генератор не ответил"
 	fi
 
-	# 3) через живой amneziawg-интерфейс
+	# 3) через живой amneziawg-интерфейс (как в ZM: провайдер часто закрывает API напрямую)
 	local i a
 	for i in $(uci -q show network 2>/dev/null | sed -n "s/^network\.\([a-z0-9_]*\)\.proto='amneziawg'\$/\1/p"); do
 		a=$(hs_age_of "$i")
-		case "$a" in ''|*) continue ;; esac
+		case "$a" in ''|*[!0-9]*) continue ;; esac
 		[ "$a" -lt 180 ] 2>/dev/null || continue
 		if _cf_api_ok "--interface $i"; then
-			log "Cloudflare доступен через туннель $i"
+			log "Cloudflare доступен через туннель $i — регистрируем через него"
 			keys_register "--interface $i" && return 0
+		else
+			log "туннель $i жив, но API через него недоступен"
 		fi
 	done
 
 	# 4) временный boot-туннель на общих ключах
+	log "прямые пути не сработали — поднимаем временный туннель на общих ключах"
 	local host port m
 	for host in 188.114.96.3 162.159.192.1 188.114.97.1; do
 		for port in $AWG_TEST_PORTS; do

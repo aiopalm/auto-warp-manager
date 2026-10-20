@@ -100,4 +100,15 @@ echo "$OUT" | grep -q '"result":"regen-failed"' && ok "regen: regen-failed" || f
 grep -q "OLDCONFPRIVKEY" "$WAC_TEST_ROOT/WARP.conf" && ok "regen: конфиг не тронут при провале" || fail "regen: конфиг не тронут"
 wac_teardown
 
+# (e) API закрыт напрямую, но доступен через живой туннель -> ключи через туннель, replaced
+setup_regen
+printf '%s\n' "$OLD_CONF" > "$WAC_TEST_ROOT/WARP.conf"
+wac_curl_unset "$CF_API"
+# вызовы API: 1) прямой POST — нет связи; 2) api_ok через туннель — есть; 3) POST через туннель — рег; 4) PATCH — ok
+wac_curl_seq "$CF_API" "" "ok" "$CF_REG_OK" "ok"
+OUT=$(wac_run regen)
+echo "$OUT" | grep -q '"result":"replaced"' && ok "regen: ключи через живой туннель" || fail "regen: ключи через живой туннель ($OUT)"
+grep -q "регистрируем через него" "$WAC_LOG_FILE" && ok "regen: лог туннельного пути" || fail "regen: лог туннельного пути"
+wac_teardown
+
 summary

@@ -27,7 +27,7 @@ case "$URL" in
 	https://*) URL="${URL#https://}" ;;
 	http://*) URL="${URL#http://}" ;;
 esac
-SLUG=$(echo "$URL" | sed 's#[/:]#_#g; s#[?#].*$##')
+SLUG=$(echo "$URL" | sed 's#[/:]#_#g; s#[?#].*$##; s#_*$##')
 SRC="$ROOT/curl/$SLUG"
 RESP=""
 # seq-режим: если есть каталог $SRC.seq.d — N-й вызов возвращает содержимое N-го файла

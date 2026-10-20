@@ -91,7 +91,7 @@ _wac_url_slug() {
 		https://*) u="${u#https://}" ;;
 		http://*) u="${u#http://}" ;;
 	esac
-	echo "$u" | sed 's#[/:]#_#g; s#[?#].*$##'
+	echo "$u" | sed 's#[/:]#_#g; s#[?#].*$##; s#_*$##'
 }
 
 wac_curl_set() { # url content — задаёт ответ стаба curl
