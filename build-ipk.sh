@@ -21,7 +21,7 @@ Architecture: all
 Section: luci
 Description: Автопроверка и автозамена WARP-конфига (AmneziaWG). Периодически проверяет работоспособность WARP-туннеля и при недоступности генерирует новый конфиг с подбором точки входа.
 Maintainer: WARP AutoCheck contributors
-Source: https://github.com/StressOzz/Zapret-Manager
+Source: https://github.com/aiopalm/auto-warp-manager
 Installed-Size: $(du -sk "$PKG_DIR/files" | cut -f1)
 EOF
 echo "2.0" > "$STAGE/debian-binary"

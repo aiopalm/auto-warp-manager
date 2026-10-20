@@ -73,7 +73,12 @@ for f in ['./usr/bin/warp-autocheck', './etc/init.d/warp-autocheck']:
 sys.exit(0 if ok else 1)
 PYEOF
 
-# (f) install.sh существует и синтаксически корректен
+# (f) install.sh существует, синтаксически корректен, тянет файлы с гита
 [ -f "$ROOT/install.sh" ] && sh -n "$ROOT/install.sh" && ok "install.sh" || fail "install.sh"
+grep -q "raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh" "$ROOT/install.sh" && ok "install.sh: гит-однострочник согласован" || fail "install.sh: гит-однострочник"
+grep -q "REPO_TARBALL=\"https://github.com/aiopalm/auto-warp-manager" "$ROOT/install.sh" && ok "install.sh: tarball из репо" || fail "install.sh: tarball из репо"
+
+# (g) .gitignore не пускает артефакты
+grep -q "^dist/" "$ROOT/.gitignore" && grep -q "^.superpowers/" "$ROOT/.gitignore" && ok ".gitignore" || fail ".gitignore"
 
 summary
