@@ -62,18 +62,16 @@ wac_run status | grep -q '"fails":0' && ok "regen: fails=0" || fail "regen: fail
 [ -f "$WAC_TEST_ROOT/WARP.conf.bak" ] && ok "regen: бэкап создан" || fail "regen: бэкап создан"
 wac_teardown
 
-# (b) только RU-точки -> not-helped, конфиг не тронут
+# (b) работают только RU-точки -> теперь это приемлемо: replaced с RU-узлом
 setup_regen
 printf '%s\n' "$OLD_CONF" > "$WAC_TEST_ROOT/WARP.conf"
-MD5_BEFORE=$(md5 -q "$WAC_TEST_ROOT/WARP.conf" 2>/dev/null || md5sum "$WAC_TEST_ROOT/WARP.conf" | awk '{print $1}')
 wac_curl_set "$META" "$META_RU"
 wac_curl_set "$TRACE" "ip=1.2.3.4
 warp=on
 colo=DME"
 OUT=$(wac_run regen)
-echo "$OUT" | grep -q '"result":"not-helped"' && ok "regen: not-helped (только RU)" || fail "regen: not-helped ($OUT)"
-MD5_AFTER=$(md5 -q "$WAC_TEST_ROOT/WARP.conf" 2>/dev/null || md5sum "$WAC_TEST_ROOT/WARP.conf" | awk '{print $1}')
-assert_eq "$MD5_AFTER" "$MD5_BEFORE" "regen: RU-фолбэк не трогает конфиг"
+echo "$OUT" | grep -q '"result":"replaced"' && ok "regen: RU-точка принимается как рабочая" || fail "regen: RU-точка ($OUT)"
+grep -q "TESTPRIVKEY" "$WAC_TEST_ROOT/WARP.conf" && ok "regen: конфиг заменен на RU-точку" || fail "regen: конфиг заменен"
 wac_teardown
 
 # (c) пост-проверка провалилась -> rolled-back, конфиг = бэкап

@@ -60,7 +60,7 @@ function resultBadge(res) {
 		'replaced':   ['wac-ok',   'заменён и работает'],
 		'no-link':    ['wac-bad',  'нет связи'],
 		torn:         ['wac-warn', 'обрывается (DPI)'],
-		'ru-colo':    ['wac-warn', 'российский узел'],
+		'ru-colo':    ['wac-ok',   'работает (выход RU)'],
 		'no-iface':   ['wac-bad',  'интерфейс не найден'],
 		'manual-off': ['wac-mute', 'выключен вручную'],
 		'wan-down':   ['wac-mute', 'сеть недоступна'],
@@ -92,6 +92,8 @@ return view.extend({
 	_settingsCard: null,
 	_logCard: null,
 	_wrap: null,
+	_forceBusy: false,
+	_lastStatus: null,
 
 	load: function () {
 		return Promise.all([rpcStatus(), rpcGetSettings()]);
@@ -102,6 +104,8 @@ return view.extend({
 		var status = data[0] || {};
 		var settings = data[1] || {};
 		var self = this;
+		this._lastStatus = status;
+		this._forceBusy = !!status.running;
 
 		var wrap = E('div', { 'class': 'wac-wrap' });
 		this._wrap = wrap;
@@ -171,7 +175,7 @@ return view.extend({
 			row('Последняя замена', s.last_replace ? fmtTime(s.last_replace) : 'не было'),
 			row('Автопроверка', s.enabled ? ('включена, каждые ' + s.interval + ' ч') : 'выключена')
 		];
-		if (s.running) {
+		if (s.running || this._forceBusy) {
 			rows.push(row('Сейчас', E('span', { 'class': 'wac-busy' }, 'выполняется операция…')));
 		}
 		return E('div', { 'class': 'wac-card' }, [E('h3', {}, 'Статус')].concat(rows));
@@ -179,7 +183,7 @@ return view.extend({
 
 	renderActions: function (s) {
 		var self = this;
-		var busy = !!s.running;
+		var busy = !!s.running || !!this._forceBusy;
 		var checkBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-positive',
 			'disabled': busy ? '' : null,
@@ -230,13 +234,24 @@ return view.extend({
 
 	runAction: function (fn) {
 		var self = this;
+		/* мгновенная реакция: бейдж «выполняется» и блокировка кнопок без ожидания опроса */
+		this._forceBusy = true;
+		if (this._lastStatus) {
+			this._lastStatus.running = true;
+			this.liveUpdate(this._lastStatus);
+		}
 		return fn().then(function (res) {
 			if (res && res.error) {
+				self._forceBusy = false;
 				ui.addNotification(null, E('p', {}, res.error), 'error');
+				self.refreshAll();
+				return;
 			}
 			self.startPolling(true);
 		}).catch(function () {
+			self._forceBusy = false;
 			ui.addNotification(null, E('p', {}, 'Роутер не ответил'), 'error');
+			self.refreshAll();
 		});
 	},
 
@@ -247,6 +262,8 @@ return view.extend({
 		var tick = function () {
 			rpcStatus().then(function (s) {
 				if (!s) return;
+				self._lastStatus = s;
+				self._forceBusy = false;
 				self.liveUpdate(s);
 				if (s.running) {
 					pollTimer = setTimeout(tick, 3000);

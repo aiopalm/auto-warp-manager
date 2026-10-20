@@ -48,7 +48,7 @@ OUT=$(wac_run check)
 echo "$OUT" | grep -q '"result":"no-link"' && ok "check: warp!=on -> no-link" || fail "check: warp!=on -> no-link ($OUT)"
 wac_teardown
 
-# (d) российский colo -> ru-colo
+# (d) российский colo -> ru-colo, НО это не провал: fails не растёт
 setup_ok_env
 wac_curl_set "$TRACE" "ip=1.2.3.4
 warp=on
@@ -56,6 +56,8 @@ colo=DME"
 wac_curl_set "$META" '{"colo":{"iata":"DME","country":"RU"},"country":"RU"}'
 OUT=$(wac_run check)
 echo "$OUT" | grep -q '"result":"ru-colo"' && ok "check: ru-colo" || fail "check: ru-colo ($OUT)"
+F=$(wac_run status | grep -o '"fails":[0-9]*' | cut -d: -f2)
+assert_eq "$F" "0" "check: ru-colo не растит fails (владельцу RU-выход ок)"
 wac_teardown
 
 # (e) обрыв потока (torn) -> torn

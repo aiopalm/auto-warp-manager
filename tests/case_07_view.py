@@ -85,6 +85,12 @@ if src.index("leftCol") < src.index("rightCol") and "leftCol" in src:
 else:
     fail("view: настройки слева, статус справа")
 
+# (h) мгновенный busy: forceBusy-флаг, бейдж и кнопки реагируют сразу
+if "_forceBusy" in src and "this._forceBusy = true" in src:
+    ok("view: мгновенный busy-флаг")
+else:
+    fail("view: мгновенный busy-флаг")
+
 # (h) тумблер автопроверки в «Действиях»: зелёная «Включить» / красная «Выключить», чекбокса больше нет
 if ("'Выключить'" in src and "'Включить'" in src
         and "cbi-button-negative' : 'cbi-button-positive'" in src.replace('"', "'")):
