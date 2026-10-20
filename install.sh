@@ -25,10 +25,12 @@ install_from() { # каталог с содержимым files/
 	for f in \
 		usr/bin/warp-autocheck \
 		etc/init.d/warp-autocheck \
-		usr/libexec/rpcd/warp-autocheck; do
+		usr/libexec/rpcd/luci.warp-autocheck; do
 		cp -f "$src/$f" "/$f" || die "не удалось скопировать $f"
 		chmod 755 "/$f"
 	done
+	# уборка плагина до переименования (иначе rpcd покажет битый второй объект)
+	rm -f /usr/libexec/rpcd/warp-autocheck
 	for f in \
 		etc/config/warp-autocheck \
 		usr/share/rpcd/acl.d/luci-app-warp-autocheck.json \
@@ -98,8 +100,37 @@ download_and_install() {
 
 cleanup_tmp() { rm -rf "$TMP_DIR"; }
 
+uninstall() {
+	echo "==> Останавливаем службу и убираем cron-строку"
+	[ -x /etc/init.d/warp-autocheck ] && /etc/init.d/warp-autocheck disable 2>/dev/null
+	[ -x /etc/init.d/warp-autocheck ] && /etc/init.d/warp-autocheck stop 2>/dev/null
+
+	echo "==> Удаляем файлы пакета"
+	rm -f /usr/bin/warp-autocheck
+	rm -f /etc/init.d/warp-autocheck
+	rm -f /usr/libexec/rpcd/luci.warp-autocheck
+	rm -f /usr/libexec/rpcd/warp-autocheck   # старый плагин до переименования
+	rm -f /usr/share/rpcd/acl.d/luci-app-warp-autocheck.json
+	rm -f /usr/share/luci/menu.d/luci-app-warp-autocheck.json
+	rm -rf /www/luci-static/resources/view/warp-autocheck
+	rm -f /etc/config/warp-autocheck
+	rm -rf /tmp/warp-autocheck.run
+	rm -f /tmp/warp-autocheck.state /tmp/warp-autocheck.log /tmp/warp-autocheck.lock /tmp/warp-autocheck.job
+
+	echo "==> Перезапускаем rpcd и cron"
+	/etc/init.d/rpcd restart 2>/dev/null || /etc/init.d/rpcd reload
+	/etc/init.d/cron restart 2>/dev/null || true
+
+	echo
+	echo "Готово: WARP AutoCheck удалён."
+	echo "Тронутое только наш пакет. Интерфейсы AmneziaWG, /root/WARP.conf и сам AmneziaWG — не тронуты."
+}
+
 # --- режимы ------------------------------------------------------------------
 case "${1:-}" in
+	--uninstall|-u)
+		uninstall
+		;;
 	--local)
 		install_local
 		;;

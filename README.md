@@ -42,6 +42,28 @@ cd auto-warp-manager
 ./install.sh root@192.168.1.1   # или ./install.sh --local на самом роутере
 ```
 
+## Обновление
+
+Та же одна строка, что и при установке — файлы пакета перезапишутся свежими
+из репозитория, ваши настройки (`/etc/config/warp-autocheck`) сохранятся:
+
+```
+wget -qO - https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh | sh
+```
+
+Если ставили через ipk — скачайте/пересоберите свежий ipk и поставьте
+поверх: `opkg install --force-reinstall /tmp/luci-app-warp-autocheck_*.ipk`.
+
+## Удаление
+
+Удаляет **только этот пакет** (страницу LuCI, бэкенд, cron-строку, настройки).
+Интерфейсы AmneziaWG, `/root/WARP.conf`, сам AmneziaWG и Zapret Manager
+остаются как были:
+
+```
+wget -qO - https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh | sh -s --uninstall
+```
+
 ## Как работает
 
 - Проверка — раз в N часов (по умолчанию 6): рукопожатие интерфейса, trace-запрос

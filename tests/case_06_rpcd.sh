@@ -2,7 +2,7 @@
 # Case 06: rpcd-плагин (согласованность методов) + get_settings/set_settings
 . "$(dirname "$0")/common.sh"
 
-PLUGIN="$ROOT/luci-app-warp-autocheck/files/usr/libexec/rpcd/warp-autocheck"
+PLUGIN="$ROOT/luci-app-warp-autocheck/files/usr/libexec/rpcd/luci.warp-autocheck"
 ACL="$ROOT/luci-app-warp-autocheck/files/usr/share/rpcd/acl.d/luci-app-warp-autocheck.json"
 MENU="$ROOT/luci-app-warp-autocheck/files/usr/share/luci/menu.d/luci-app-warp-autocheck.json"
 

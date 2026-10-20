@@ -32,7 +32,7 @@ mkdir -p "$STAGE/data"
 chmod -R u+rwX "$STAGE/data"
 chmod 755 "$STAGE/data/usr/bin/warp-autocheck" \
 	"$STAGE/data/etc/init.d/warp-autocheck" \
-	"$STAGE/data/usr/libexec/rpcd/warp-autocheck"
+	"$STAGE/data/usr/libexec/rpcd/luci.warp-autocheck"
 chmod 644 "$STAGE/data/etc/config/warp-autocheck" \
 	"$STAGE/data/usr/share/rpcd/acl.d/luci-app-warp-autocheck.json" \
 	"$STAGE/data/usr/share/luci/menu.d/luci-app-warp-autocheck.json" \

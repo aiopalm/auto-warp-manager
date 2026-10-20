@@ -18,6 +18,18 @@ define Package/$(PKG_NAME)/conffiles
 /etc/config/warp-autocheck
 endef
 
+define Package/$(PKG_NAME)/postinst
+#!/bin/sh
+rm -f /usr/libexec/rpcd/warp-autocheck
+if [ -x /etc/init.d/warp-autocheck ]; then
+	/etc/init.d/warp-autocheck enable
+	/etc/init.d/warp-autocheck start
+fi
+[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart
+[ -x /etc/init.d/cron ] && /etc/init.d/cron restart
+exit 0
+endef
+
 define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./files/usr/bin/warp-autocheck $(1)/usr/bin/warp-autocheck
@@ -26,7 +38,7 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_DATA) ./files/etc/config/warp-autocheck $(1)/etc/config/warp-autocheck
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
-	$(INSTALL_BIN) ./files/usr/libexec/rpcd/warp-autocheck $(1)/usr/libexec/rpcd/warp-autocheck
+	$(INSTALL_BIN) ./files/usr/libexec/rpcd/luci.warp-autocheck $(1)/usr/libexec/rpcd/luci.warp-autocheck
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./files/usr/share/rpcd/acl.d/luci-app-warp-autocheck.json $(1)/usr/share/rpcd/acl.d/luci-app-warp-autocheck.json
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
