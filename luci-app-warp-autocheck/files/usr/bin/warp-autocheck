@@ -436,7 +436,7 @@ _warp_conf_i1() { # текущая маска из WARP.conf
 
 pick_endpoint() { # priv v4 [hint_ep] [hint_mask] -> BEST_EP/BEST_MASK; 0 найдено / 1 нет
 	local priv="$1" v4="$2" host port m ep
-	local t0=$(date +%s) tries=0
+	local t0=$(date +%s) tries=0 mn=0
 	local masks="" cur
 	cur="$(_warp_conf_i1)"
 	[ -n "$cur" ] && masks="$cur"
@@ -450,6 +450,7 @@ $(_i1_sip)"
 	local h1="${BEST_HINT_EP%%:*}"
 	[ -n "$h1" ] || h1="${AWG_TEST_HOSTS%% *}"
 	local hosts="$h1 $AWG_TEST_HOSTS $(_rand_hosts 2)"
+	log "подбор точки входа: до 80 попыток, лимит 7 минут"
 
 	for host in $hosts; do
 		for port in $AWG_TEST_PORTS; do
@@ -460,26 +461,32 @@ $(_i1_sip)"
 			IFS="$nl"
 			for m in $masks; do
 				IFS="$oifs"
+				mn=$((mn + 1))
+				[ "$mn" -gt 7 ] && mn=1
 				tries=$((tries + 1))
 				[ "$tries" -gt 80 ] && return 1
 				[ $(( $(date +%s) - t0 )) -gt 420 ] && return 1
 				if try_conf "$AWG_TEST_IF" "$priv" "$v4" "$ep" "$m" "$G_PEER"; then
+					log "попытка $tries: $ep, маска #$mn — рукопожатие есть"
 					# трафик реально идёт через туннель? (trace, как _awg_trace в ZM)
 					local tout
-					tout=$(_wac_trace_ip "$AWG_TEST_IF") || continue
+					tout=$(_wac_trace_ip "$AWG_TEST_IF") || { log "   $ep — trace не прошёл"; continue; }
 					local tip twarp tcolo
 					tip=$(printf '%s\n' "$tout" | awk '{print $1}')
 					twarp=$(printf '%s\n' "$tout" | awk '{print $2}')
 					tcolo=$(printf '%s\n' "$tout" | awk '{print $3}')
-					[ -n "$tip" ] || { log "$ep — рукопожатие есть, trace не идёт"; continue; }
-					case "$twarp" in on|plus) ;; *) log "$ep — trace warp=${twarp:-нет}"; continue ;; esac
+					[ -n "$tip" ] || { log "   $ep — рукопожатие есть, trace не идёт"; continue; }
+					case "$twarp" in on|plus) ;; *) log "   $ep — trace warp=${twarp:-нет}"; continue ;; esac
 					set -- $(_wac_probe "$AWG_TEST_IF")
 					local loss="$1" torn="$3"
-					[ "${loss:-100}" -ge 100 ] 2>/dev/null && { log "$ep — рукопожатие есть, трафика нет"; continue; }
-					[ "$torn" = "1" ] && { log "$ep — трафик обрывается (DPI)"; continue; }
+					[ "${loss:-100}" -ge 100 ] 2>/dev/null && { log "   $ep — рукопожатие есть, трафика нет"; continue; }
+					[ "$torn" = "1" ] && { log "   $ep — трафик обрывается (DPI)"; continue; }
 					BEST_EP="$ep"; BEST_MASK="$m"
-					log "найдена точка: $ep, узел ${tcolo:-?}$([ "$tcolo" != '-' ] && is_ru "$tcolo" && echo ' (RU)')"
+					log "   $ep — трафик идёт: узел ${tcolo:-?}$([ "$tcolo" != '-' ] && is_ru "$tcolo" && echo ' (RU)')"
+					log "найдена точка: $ep, маска #$mn"
 					return 0
+				else
+					log "попытка $tries: $ep, маска #$mn — нет ответа"
 				fi
 			done
 			IFS="$oifs"
@@ -583,7 +590,7 @@ cmd_regen() {
 		printf '{"result":"skipped:no-iface"}\n'; return 0
 	fi
 
-	log "regen: получаем ключи"
+	log "regen: Шаг 1 из 2 — получаем ключи WARP"
 	if ! keys_register; then
 		release_lock
 		log "regen: ключи получить не удалось"
@@ -593,6 +600,7 @@ cmd_regen() {
 		return 0
 	fi
 	log "regen: ключи получены, адрес $G_V4"
+	log "regen: Шаг 2 из 2 — ищем рабочую точку входа и маску"
 
 	if ! pick_endpoint "$G_PRIV" "$G_V4"; then
 		try_down "$AWG_TEST_IF"

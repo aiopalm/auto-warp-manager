@@ -228,6 +228,7 @@ return view.extend({
 				]);
 				ui.showModal('Заменить WARP-конфиг?', E('div', {}, [
 					E('p', {}, 'Роутер получит новые ключи WARP, переберёт точки входа и запишет рабочую связку в /root/WARP.conf. Это займёт до 10 минут, туннель переподнимется.'),
+					E('p', { 'class': 'wac-hint' }, 'Можно закрыть страницу и уйти — замена продолжится в фоне. Результат появится в статусе и логе, ход подбора виден в блоке «Лог».'),
 					modalBtns
 				]));
 			}
@@ -271,6 +272,7 @@ return view.extend({
 				self._lastStatus = s;
 				self._forceBusy = false;
 				self.liveUpdate(s);
+				self.refreshLog();   /* живой хвост лога, пока идёт операция */
 				if (s.running) {
 					pollTimer = setTimeout(tick, 3000);
 				} else {

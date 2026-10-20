@@ -101,7 +101,7 @@ setup_run
 wac_curl_unset "$TRACE"      # trace пуст -> no-link стабильно
 wac_curl_unset "$CF_API"     # ключи не получить -> regen-failed, но regen ЗАПУСКАЕТСЯ
 wac_run run >/dev/null
-grep -q "regen: получаем ключи" "$WAC_LOG_FILE" && ok "run: T5 regen запущен" || fail "run: T5 regen запущен"
+grep -q "Шаг 1 из 2 — получаем ключи" "$WAC_LOG_FILE" && ok "run: T5 regen запущен" || fail "run: T5 regen запущен"
 grep -q "WARP.conf заменен" "$WAC_LOG_FILE" && fail "run: T5 конфиг не должен замениться (regen-failed)" || ok "run: T5 конфиг не тронут"
 wac_teardown
 
