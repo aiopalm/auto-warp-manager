@@ -215,15 +215,21 @@ return view.extend({
 			'disabled': busy ? '' : null,
 			'click': function (ev) {
 				ev.preventDefault();
-				if (busy) return;
-				ui.showModal('Заменить WARP-конфиг?', E('p', {},
-					'Роутер получит новые ключи WARP, переберёт точки входа и запишет рабочую связку в /root/WARP.conf. Это займёт до 10 минут, туннель переподнимется.'), [
+				if (busy) {
+					ui.addNotification(null, E('p', {}, 'Сейчас уже выполняется операция — дождитесь её окончания в статусе'), 'warning');
+					return;
+				}
+				var modalBtns = E('div', { 'class': 'wac-actions', 'style': 'margin-top:12px' }, [
 					E('button', { 'class': 'btn', 'click': function () { ui.hideModal(); } }, 'Отмена'),
 					E('button', {
 						'class': 'btn cbi-button-negative important',
 						'click': function () { ui.hideModal(); self.runAction(rpcRegen); }
 					}, 'Заменить')
 				]);
+				ui.showModal('Заменить WARP-конфиг?', E('div', {}, [
+					E('p', {}, 'Роутер получит новые ключи WARP, переберёт точки входа и запишет рабочую связку в /root/WARP.conf. Это займёт до 10 минут, туннель переподнимется.'),
+					modalBtns
+				]));
 			}
 		}, 'Заменить сейчас');
 		return E('div', { 'class': 'wac-card' }, [
