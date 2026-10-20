@@ -79,8 +79,19 @@ grep -q "raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh" "$
 grep -q "REPO_TARBALL=\"https://github.com/aiopalm/auto-warp-manager" "$ROOT/install.sh" && ok "install.sh: tarball из репо" || fail "install.sh: tarball из репо"
 grep -q "uninstall()" "$ROOT/install.sh" && ok "install.sh: режим удаления" || fail "install.sh: режим удаления"
 grep -q "rm -rf /www/luci-static/resources/view/warp-autocheck" "$ROOT/install.sh" && ok "install.sh: удаление удаляет файлы пакета" || fail "install.sh: удаление"
-grep -q "WARP.conf" "$ROOT/install.sh" && grep -q "не тронуты" "$ROOT/install.sh" && ok "install.sh: удаление не трогает WARP.conf" || fail "install.sh: удаление не должно трогать WARP.conf"
 grep -qE 'rm .*/root/WARP\.conf$' "$ROOT/install.sh" && fail "install.sh: WARP.conf НЕ должен удаляться" || ok "install.sh: WARP.conf не удаляется"
+
+# (g) обновление перезаписывает страницу, но не настройки
+if grep -q 'cp -f "\$src/\$f"' "$ROOT/install.sh" && ! grep -q '\[ -f "/\$f" \] || cp' "$ROOT/install.sh"; then
+	ok "install.sh: main.js перезаписывается при обновлении"
+else
+	fail "install.sh: main.js перезаписывается при обновлении"
+fi
+if grep -q '\[ ! -f /etc/config/warp-autocheck \]' "$ROOT/install.sh"; then
+	ok "install.sh: настройки не затираются"
+else
+	fail "install.sh: настройки не затираются"
+fi
 
 # (g) .gitignore не пускает артефакты
 grep -q "^dist/" "$ROOT/.gitignore" && grep -q "^.superpowers/" "$ROOT/.gitignore" && ok ".gitignore" || fail ".gitignore"

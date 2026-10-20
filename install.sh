@@ -31,13 +31,16 @@ install_from() { # каталог с содержимым files/
 	done
 	# уборка плагина до переименования (иначе rpcd покажет битый второй объект)
 	rm -f /usr/libexec/rpcd/warp-autocheck
+	# не затирать только пользовательские настройки; остальное — всегда свежим
+	if [ ! -f /etc/config/warp-autocheck ]; then
+		cp "$src/etc/config/warp-autocheck" /etc/config/warp-autocheck
+	fi
 	for f in \
-		etc/config/warp-autocheck \
 		usr/share/rpcd/acl.d/luci-app-warp-autocheck.json \
 		usr/share/luci/menu.d/luci-app-warp-autocheck.json \
 		www/luci-static/resources/view/warp-autocheck/main.js; do
 		mkdir -p "$(dirname "/$f")"
-		[ -f "/$f" ] || cp "$src/$f" "/$f"   # не затирать существующие настройки
+		cp -f "$src/$f" "/$f" || die "не удалось скопировать $f"
 		chmod 644 "/$f"
 	done
 }
