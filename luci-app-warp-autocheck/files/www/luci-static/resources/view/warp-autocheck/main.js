@@ -18,7 +18,7 @@ var CSS = [
 	'.wac-grid { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 14px; align-items: start; }',
 	'.wac-col { min-width: 0 }',
 	'@media (max-width: 900px) { .wac-grid { grid-template-columns: 1fr } }',
-	'.wac-card { background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.25); border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; }',
+	'.wac-card { background: var(--surface-2, rgba(127,127,127,.06)); border: 1px solid var(--border, rgba(127,127,127,.22)); border-radius: 16px; padding: 14px 18px; margin-bottom: 14px; }',
 	'.wac-card h3 { margin: 0 0 10px 0; font-size: 1.05rem; }',
 	'.wac-row { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,.18); flex-wrap: wrap; }',
 	'.wac-row:last-child { border-bottom: 0 }',
@@ -27,17 +27,17 @@ var CSS = [
 	'.wac-val .wac-input, .wac-val select, .wac-val input { max-width: 100%; box-sizing: border-box }',
 	'.wac-col { min-width: 0; display: flex; flex-direction: column }',
 	'.wac-col .wac-card:last-child { flex: 1; margin-bottom: 0 }',
-	'.wac-badge { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; color: #fff; background: #888; }',
+	'.wac-badge { display: inline-flex; align-items: center; padding: 2px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; color: #fff; background: #888; }',
 	'.wac-badge.wac-ok { background: #2e9e44 }',
 	'.wac-badge.wac-warn { background: #d09a2e }',
 	'.wac-badge.wac-bad { background: #c9302c }',
 	'.wac-badge.wac-mute { background: #7f8c9b }',
-	'.wac-alert { border-left: 4px solid #c9302c; padding: 10px 14px; border-radius: 4px; background: rgba(201,48,44,.14); }',
+	'.wac-alert { border-left: 4px solid #c9302c; padding: 10px 14px; border-radius: 12px; background: rgba(201,48,44,.14); }',
 	'.wac-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }',
-	'.wac-log { max-height: 300px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; background: rgba(127,127,127,.12); padding: 10px; border-radius: 4px; margin-top: 8px; }',
-	'.wac-input { padding: 3px 8px; background: rgba(127,127,127,.1); border: 1px solid rgba(127,127,127,.3); border-radius: 4px; color: inherit }',
+	'.wac-log { max-height: 300px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; background: var(--surface-2, rgba(127,127,127,.10)); border: 1px solid var(--border, rgba(127,127,127,.16)); border-radius: 12px; padding: 10px; margin-top: 8px; }',
+	'.wac-input { padding: 3px 8px; background: var(--surface-2, rgba(127,127,127,.1)); border: 1px solid var(--border, rgba(127,127,127,.3)); border-radius: 8px; color: inherit }',
 	'.wac-hint { font-size: 12px; opacity: .6; margin-top: 2px }',
-	'.wac-busy { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; color: #fff; background: #356ac3; }'
+	'.wac-busy { display: inline-flex; align-items: center; padding: 2px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; background: #356ac3; }'
 ].join('\n');
 
 function ensureStyles() {
@@ -183,21 +183,8 @@ return view.extend({
 		var checkBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-positive',
 			'disabled': busy ? '' : null,
-			'click': ui.createHandlerFn(self, function () { return self.runAction(rpcCheck, 'Проверяем WARP'); })
+			'click': ui.createHandlerFn(self, function () { return self.runAction(rpcCheck); })
 		}, 'Проверить сейчас');
-		var regenBtn = E('button', {
-			'class': 'btn cbi-button cbi-button-negative',
-			'disabled': busy ? '' : null,
-			'click': ui.createHandlerFn(self, function () {
-				return new Promise(function (resolve) {
-					ui.showModal('Заменить WARP-конфиг?', E('p', {},
-						'Роутер получит новые ключи WARP, переберёт точки входа и запишет рабочую связку в /root/WARP.conf. Это займёт до 10 минут, туннель переподнимется.'), [
-						E('button', { 'class': 'btn', 'click': function () { ui.hideModal(); resolve(null); } }, 'Отмена'),
-						E('button', { 'class': 'btn cbi-button-negative important', 'click': function () { ui.hideModal(); resolve(true); } }, 'Заменить')
-					]);
-				}).then(function (ok) { return ok ? self.runAction(rpcRegen, 'Генерируем WARP с проверкой') : undefined; });
-			})
-		}, 'Заменить сейчас');
 		/* вкл/выкл автопроверки — зелёная «Включить» либо красная «Выключить» */
 		var toggleBtn = E('button', {
 			'class': 'btn cbi-button ' + (s.enabled ? 'cbi-button-negative' : 'cbi-button-positive'),
@@ -207,9 +194,9 @@ return view.extend({
 				var iv = document.getElementById('wac-interval');
 				var ifc = document.getElementById('wac-iface');
 				var rt = document.getElementById('wac-retries');
-				var interval = iv ? (parseInt(iv.value, 10) || 6) : (this._settings ? this._settings.interval : 6);
-				var iface = ifc ? (ifc.value || 'warp').trim() : (this._settings ? this._settings.interface : 'warp');
-				var retries = rt ? (parseInt(rt.value, 10) || 0) : (this._settings ? this._settings.retries : 2);
+				var interval = iv ? (parseInt(iv.value, 10) || 6) : ((self._settings && self._settings.interval) || 6);
+				var iface = ifc ? (ifc.value || 'warp').trim() : ((self._settings && self._settings.interface) || 'warp');
+				var retries = rt ? (parseInt(rt.value, 10) || 0) : ((self._settings && self._settings.retries) || 2);
 				return rpcSetSettings(newVal, String(interval), iface, String(retries)).then(function (res) {
 					if (res && res.error) {
 						ui.addNotification(null, E('p', {}, res.error), 'error');
@@ -219,25 +206,36 @@ return view.extend({
 				});
 			})
 		}, s.enabled ? 'Выключить' : 'Включить');
+		var regenBtn = E('button', {
+			'class': 'btn cbi-button cbi-button-negative',
+			'disabled': busy ? '' : null,
+			'click': function (ev) {
+				ev.preventDefault();
+				if (busy) return;
+				ui.showModal('Заменить WARP-конфиг?', E('p', {},
+					'Роутер получит новые ключи WARP, переберёт точки входа и запишет рабочую связку в /root/WARP.conf. Это займёт до 10 минут, туннель переподнимется.'), [
+					E('button', { 'class': 'btn', 'click': function () { ui.hideModal(); } }, 'Отмена'),
+					E('button', {
+						'class': 'btn cbi-button-negative important',
+						'click': function () { ui.hideModal(); self.runAction(rpcRegen); }
+					}, 'Заменить')
+				]);
+			}
+		}, 'Заменить сейчас');
 		return E('div', { 'class': 'wac-card' }, [
 			E('h3', {}, 'Действия'),
 			E('div', { 'class': 'wac-actions' }, [toggleBtn, checkBtn, regenBtn])
 		]);
 	},
 
-	runAction: function (fn, busyText) {
+	runAction: function (fn) {
 		var self = this;
-		ui.showIndicator(null, busyText, true);
 		return fn().then(function (res) {
-			ui.hideIndicator();
 			if (res && res.error) {
 				ui.addNotification(null, E('p', {}, res.error), 'error');
-				return;
 			}
-			ui.addNotification(null, E('p', {}, 'Операция запущена'), 'info');
 			self.startPolling(true);
 		}).catch(function () {
-			ui.hideIndicator();
 			ui.addNotification(null, E('p', {}, 'Роутер не ответил'), 'error');
 		});
 	},
@@ -253,7 +251,6 @@ return view.extend({
 				if (s.running) {
 					pollTimer = setTimeout(tick, 3000);
 				} else {
-					ui.addNotification(null, E('p', {}, 'Операция завершена'), 'info');
 					self.refreshAll();
 				}
 			});

@@ -66,6 +66,10 @@ if "replaceCard" in src and "liveUpdate" in src:
     ok("view: живое обновление карточек")
 else:
     fail("view: живое обновление карточек")
+if "Операция запущена" in src or "Операция завершена" in src:
+    fail("view: без уведомлений-флуда")
+else:
+    ok("view: без уведомлений-флуда")
 
 # (g) раскладка: действия сверху во всю ширину, сетка две колонки (настройки слева, статус+лог справа)
 if "wac-grid" in src and "grid-template-columns" in src:
