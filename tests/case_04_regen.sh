@@ -100,10 +100,11 @@ echo "$OUT" | grep -q '"result":"regen-failed"' && ok "regen: regen-failed" || f
 grep -q "OLDCONFPRIVKEY" "$WAC_TEST_ROOT/WARP.conf" && ok "regen: конфиг не тронут при провале" || fail "regen: конфиг не тронут"
 wac_teardown
 
-# (e) API закрыт напрямую, но доступен через живой туннель -> ключи через туннель, replaced
+# (e) API закрыт напрямую, но доступен через живой туннель (DoH через туннель + --resolve) -> replaced
 setup_regen
 printf '%s\n' "$OLD_CONF" > "$WAC_TEST_ROOT/WARP.conf"
 wac_curl_unset "$CF_API"
+wac_curl_set "https://1.1.1.1/dns-query" '{"Answer":[{"name":"api.cloudflareclient.com","type":1,"data":"162.159.192.7"}]}'
 # вызовы API: 1) прямой POST — нет связи; 2) api_ok через туннель — есть; 3) POST через туннель — рег; 4) PATCH — ok
 wac_curl_seq "$CF_API" "" "ok" "$CF_REG_OK" "ok"
 OUT=$(wac_run regen)

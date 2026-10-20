@@ -330,9 +330,19 @@ try_conf() { # dev priv ip endpoint mask [peer] -> 0 hs ok / 1 нет / 2 мод
 
 try_down() { ip link del "$1" >/dev/null 2>&1; }
 
-_cf_api_ok() { # [curl-args] -> код не 000?
+_cf_api_ip() { # [curl-args] -> IP api.cloudflareclient.com через DoH (обходит DNS-подмену провайдера)
+	local j ip ifargs=""
+	[ -n "$1" ] && ifargs="--interface $1"
+	j=$(curl -s $ifargs --connect-timeout 4 --max-time 8 -H 'accept: application/dns-json' "https://1.1.1.1/dns-query?name=api.cloudflareclient.com&type=A" 2>/dev/null)
+	ip=$(printf '%s' "$j" | grep -o '"data":"[0-9.]*"' | head -n1 | grep -o '[0-9.]*')
+	[ -n "$ip" ] && echo "$ip"
+}
+
+_cf_api_ok() { # [curl-args] -> код не 000? (с DoH-resolve против DNS-подмены)
+	local ip ipargs=""
+	ip=$(_cf_api_ip "$@") && ipargs="--resolve api.cloudflareclient.com:443:$ip"
 	local code
-	code=$(curl -s --connect-timeout 5 --max-time 8 "$@" -o /dev/null -w '%{http_code}' "$AWG_API/" 2>/dev/null)
+	code=$(curl -s --connect-timeout 5 --max-time 8 "$@" $ipargs -o /dev/null -w '%{http_code}' "$AWG_API/" 2>/dev/null)
 	[ -n "$code" ] && [ "$code" != "000" ]
 }
 
@@ -346,9 +356,12 @@ keys_register() { # [curl-args] -> G_PRIV/G_PEER/G_V4/G_V6
 	[ -n "$K_PUB" ] || { log "awg pubkey не сработал"; return 1; }
 	G_PRIV="$K_PRIV"; G_PUB="$K_PUB"
 
-	# 1) Cloudflare API напрямую (или через переданные curl-args)
+	# 1) Cloudflare API напрямую (или через переданные curl-args); IP — через DoH, против DNS-подмены
+	local ipargs=""
+	ip=$(_cf_api_ip "$@") && ipargs="--resolve api.cloudflareclient.com:443:$ip"
+	[ -n "$ipargs" ] && log "API: IP получен через DoH, идём напрямую на него"
 	rm -f "$reg"
-	code=$(curl -s --connect-timeout 6 --max-time 25 "$@" -X POST \
+	code=$(curl -s --connect-timeout 6 --max-time 25 "$@" $ipargs -X POST \
 		-H 'Content-Type: application/json' -H "User-Agent: okhttp/3.12.1" -H "CF-Client-Version: $AWG_CF_VER" -H 'Accept-Encoding: identity' \
 		-d "{\"key\":\"$G_PUB\",\"install_id\":\"\",\"fcm_token\":\"\",\"tos\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"type\":\"Android\",\"model\":\"\",\"locale\":\"en_US\"}" \
 		-o "$reg" -w '%{http_code}' "$AWG_API" 2>/dev/null)
@@ -360,7 +373,7 @@ keys_register() { # [curl-args] -> G_PRIV/G_PEER/G_V4/G_V6
 			G_V4=$(jsonfilter -i "$reg" -e '@.result.config.interface.addresses.v4' 2>/dev/null)
 			G_V6=$(jsonfilter -i "$reg" -e '@.result.config.interface.addresses.v6' 2>/dev/null)
 			if [ -n "$id" ] && [ -n "$tok" ]; then
-				code=$(curl -s --connect-timeout 6 --max-time 15 "$@" -X PATCH \
+				code=$(curl -s --connect-timeout 6 --max-time 15 "$@" $ipargs -X PATCH \
 					-H 'Content-Type: application/json' -H "User-Agent: okhttp/3.12.1" -H "CF-Client-Version: $AWG_CF_VER" -H "Authorization: Bearer $tok" \
 					-d '{"warp_enabled":true}' -o /dev/null -w '%{http_code}' "$AWG_API/$id" 2>/dev/null)
 				case "$code" in
