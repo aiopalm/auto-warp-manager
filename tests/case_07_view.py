@@ -50,12 +50,22 @@ if "ensureStyles" in src and "wac-styles" in src and ".wac-badge" in src:
 else:
     fail("view: собственные стили внедряются")
 
-# (e) node --check
+# (e) node --check и никакой перезагрузки страницы — всё живое
 r = subprocess.run(["node", "--check", VIEW], capture_output=True, text=True)
 if r.returncode == 0:
     ok("view: node --check")
 else:
     fail("view: node --check: %s" % r.stderr[:200])
+
+# (f) live-обновление: reload не используется, карточки заменяются на месте
+if "window.location.reload" in src:
+    fail("view: без перезагрузки страницы")
+else:
+    ok("view: без перезагрузки страницы")
+if "replaceCard" in src and "liveUpdate" in src:
+    ok("view: живое обновление карточек")
+else:
+    fail("view: живое обновление карточек")
 
 failed = [c for c in checks if c[0] == "FAIL"]
 for st, msg in checks:

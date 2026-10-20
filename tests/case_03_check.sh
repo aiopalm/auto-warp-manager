@@ -109,4 +109,16 @@ wac_run status | grep -q '"last_result":"ok"' && ok "check: last_result пише
 wac_run status | grep -q '"last_check":1700000000' && ok "check: last_check пишется" || fail "check: last_check пишется"
 wac_teardown
 
+# (i) чужой живой lock -> busy (для кнопки «Проверить сейчас»)
+setup_ok_env
+wac_curl_set "$TRACE" "ip=1.2.3.4
+warp=on
+colo=AMS"
+wac_curl_set "$META" '{"colo":{"iata":"AMS"},"country":"NL"}'
+echo $$ > "$WAC_LOCK_FILE"   # живой PID — тестовый шелл
+OUT=$(wac_run check)
+echo "$OUT" | grep -q '"result":"busy"' && ok "check: busy при чужом lock" || fail "check: busy ($OUT)"
+rm -f "$WAC_LOCK_FILE"
+wac_teardown
+
 summary

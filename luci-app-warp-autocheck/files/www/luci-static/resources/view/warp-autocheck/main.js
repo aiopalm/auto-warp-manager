@@ -30,7 +30,8 @@ var CSS = [
 	'.wac-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }',
 	'.wac-log { max-height: 300px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; background: rgba(127,127,127,.12); padding: 10px; border-radius: 4px; margin-top: 8px; }',
 	'.wac-input { padding: 3px 8px; background: rgba(127,127,127,.1); border: 1px solid rgba(127,127,127,.3); border-radius: 4px; color: inherit }',
-	'.wac-hint { font-size: 12px; opacity: .6; margin-top: 2px }'
+	'.wac-hint { font-size: 12px; opacity: .6; margin-top: 2px }',
+	'.wac-busy { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; color: #fff; background: #356ac3; }'
 ].join('\n');
 
 function ensureStyles() {
@@ -68,13 +69,20 @@ function resultBadge(res) {
 }
 
 function row(key, val) {
+	var valChildren = Array.prototype.slice.call(arguments, 1);
 	return E('div', { 'class': 'wac-row' }, [
 		E('div', { 'class': 'wac-key' }, key),
-		E('div', { 'class': 'wac-val' }, val)
+		E('div', { 'class': 'wac-val' }, valChildren)
 	]);
 }
 
 return view.extend({
+	_statusCard: null,
+	_actionsCard: null,
+	_settingsCard: null,
+	_logCard: null,
+	_wrap: null,
+
 	load: function () {
 		return Promise.all([rpcStatus(), rpcGetSettings()]);
 	},
@@ -84,10 +92,9 @@ return view.extend({
 		var status = data[0] || {};
 		var settings = data[1] || {};
 		var self = this;
-		this._status = status;
-		this._settings = settings;
 
 		var wrap = E('div', { 'class': 'wac-wrap' });
+		this._wrap = wrap;
 
 		if (!status.conf_exists) {
 			wrap.appendChild(E('div', { 'class': 'wac-card' }, [
@@ -99,13 +106,44 @@ return view.extend({
 			return wrap;
 		}
 
-		wrap.appendChild(this.renderStatus(status));
-		wrap.appendChild(this.renderActions(status));
-		wrap.appendChild(this.renderSettings(settings));
-		wrap.appendChild(this.renderLog());
+		this._statusCard = this.renderStatus(status);
+		this._actionsCard = this.renderActions(status);
+		this._settingsCard = this.renderSettings(settings);
+		this._logCard = this.renderLog();
+
+		wrap.appendChild(this._statusCard);
+		wrap.appendChild(this._actionsCard);
+		wrap.appendChild(this._settingsCard);
+		wrap.appendChild(this._logCard);
 
 		this.startPolling(status.running);
 		return wrap;
+	},
+
+	/* замена карточки на живую, без перезагрузки страницы */
+	replaceCard: function (cardRef, newCard) {
+		var old = this[cardRef];
+		if (old && old.parentNode) {
+			old.parentNode.replaceChild(newCard, old);
+		}
+		this[cardRef] = newCard;
+	},
+
+	liveUpdate: function (s) {
+		if (!this._wrap || !s) return;
+		this.replaceCard('_statusCard', this.renderStatus(s));
+		this.replaceCard('_actionsCard', this.renderActions(s));
+	},
+
+	refreshAll: function () {
+		var self = this;
+		return Promise.all([rpcStatus(), rpcGetSettings()]).then(function (data) {
+			var s = data[0] || {}, st = data[1] || {};
+			self.liveUpdate(s);
+			self.updateSettingsCard(st);
+			self.refreshLog();
+			return s;
+		});
 	},
 
 	renderStatus: function (s) {
@@ -113,8 +151,7 @@ return view.extend({
 		if (s.hs_age != null) {
 			hsTxt = s.hs_age < 180 ? (s.hs_age + ' сек назад') : 'старше 3 минут — туннель не отвечает';
 		}
-		return E('div', { 'class': 'wac-card' }, [
-			E('h3', {}, 'Статус'),
+		var rows = [
 			row('WARP.conf', s.conf_exists ? 'есть' : 'нет'),
 			row('Интерфейс', s.iface_exists ? (s.iface || 'warp') + (s.iface_manual_off ? ' (выключен вручную)' : '') : 'не найден'),
 			row('Точка входа', s.endpoint || '—'),
@@ -122,7 +159,11 @@ return view.extend({
 			row('Последняя проверка', fmtTime(s.last_check) + ' ', resultBadge(s.last_result), s.last_detail ? E('span', { 'class': 'wac-hint' }, ' ' + s.last_detail) : E('span')),
 			row('Последняя замена', s.last_replace ? fmtTime(s.last_replace) : 'не было'),
 			row('Автопроверка', s.enabled ? ('включена, каждые ' + s.interval + ' ч') : 'выключена')
-		]);
+		];
+		if (s.running) {
+			rows.push(row('Сейчас', E('span', { 'class': 'wac-busy' }, 'выполняется операция…')));
+		}
+		return E('div', { 'class': 'wac-card' }, [E('h3', {}, 'Статус')].concat(rows));
 	},
 
 	renderActions: function (s) {
@@ -161,7 +202,7 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, res.error), 'error');
 				return;
 			}
-			ui.addNotification(null, E('p', {}, 'Операция запущена — следите за статусом'), 'info');
+			ui.addNotification(null, E('p', {}, 'Операция запущена'), 'info');
 			self.startPolling(true);
 		}).catch(function () {
 			ui.hideIndicator();
@@ -175,11 +216,13 @@ return view.extend({
 		if (!running) return;
 		var tick = function () {
 			rpcStatus().then(function (s) {
-				if (s && s.running) {
+				if (!s) return;
+				self.liveUpdate(s);
+				if (s.running) {
 					pollTimer = setTimeout(tick, 3000);
 				} else {
-					ui.addNotification(null, E('p', {}, 'Операция завершена — обновляем страницу'), 'info');
-					window.location.reload();
+					ui.addNotification(null, E('p', {}, 'Операция завершена'), 'info');
+					self.refreshAll();
 				}
 			});
 		};
@@ -188,18 +231,18 @@ return view.extend({
 
 	renderSettings: function (st) {
 		var self = this;
-		var enabled = E('input', { 'type': 'checkbox', 'checked': st.enabled ? '' : null });
-		var interval = E('input', { 'class': 'wac-input', 'type': 'number', 'min': '1', 'max': '168', 'value': String(st.interval || 6), 'style': 'width:6em' });
-		var iface = E('input', { 'class': 'wac-input', 'type': 'text', 'value': st.interface || 'warp', 'style': 'width:12em' });
-		var retries = E('select', { 'class': 'wac-input' }, [0, 1, 2, 3].map(function (n) {
+		var enabled = E('input', { 'id': 'wac-enabled', 'type': 'checkbox', 'checked': st.enabled ? '' : null });
+		var interval = E('input', { 'class': 'wac-input', 'id': 'wac-interval', 'type': 'number', 'min': '1', 'max': '168', 'value': String(st.interval || 6), 'style': 'width:6em' });
+		var iface = E('input', { 'class': 'wac-input', 'id': 'wac-iface', 'type': 'text', 'value': st.interface || 'warp', 'style': 'width:12em' });
+		var retries = E('select', { 'class': 'wac-input', 'id': 'wac-retries' }, [0, 1, 2, 3].map(function (n) {
 			return E('option', { 'value': String(n), 'selected': (st.retries || 2) === n ? '' : null }, String(n));
 		}));
 
-		var table = E('div', { 'class': 'wac-card' }, [E('h3', {}, 'Настройки автопроверки')]);
-		table.appendChild(row(E('label', {}, [enabled, ' Автопроверка включена']), E('span')));
-		table.appendChild(row('Интервал, часов', [interval, E('div', { 'class': 'wac-hint' }, 'Раз в N часов проверять WARP (1–168)')]));
-		table.appendChild(row('Интерфейс AmneziaWG', [iface, E('div', { 'class': 'wac-hint' }, 'Имя интерфейса, соответствующего WARP.conf')]));
-		table.appendChild(row('Повторных проверок', [retries, E('div', { 'class': 'wac-hint' }, 'Сколько раз перепроверить перед заменой (0–3), пауза 5 минут')]));
+		var card = E('div', { 'class': 'wac-card' }, [E('h3', {}, 'Настройки автопроверки')]);
+		card.appendChild(row(E('label', {}, [enabled, ' Автопроверка включена']), E('span')));
+		card.appendChild(row('Интервал, часов', [interval, E('div', { 'class': 'wac-hint' }, 'Раз в N часов проверять WARP (1–168)')]));
+		card.appendChild(row('Интерфейс AmneziaWG', [iface, E('div', { 'class': 'wac-hint' }, 'Имя интерфейса, соответствующего WARP.conf')]));
+		card.appendChild(row('Повторных проверок', [retries, E('div', { 'class': 'wac-hint' }, 'Сколько раз перепроверить перед заменой (0–3), пауза 5 минут')]));
 
 		var saveBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-positive important',
@@ -213,33 +256,49 @@ return view.extend({
 						return;
 					}
 					ui.addNotification(null, E('p', {}, 'Настройки сохранены'), 'info');
-					setTimeout(function () { window.location.reload(); }, 500);
+					self.refreshAll();
 				});
 			})
 		}, 'Сохранить');
-		table.appendChild(E('div', { 'class': 'wac-actions', 'style': 'margin-top:10px' }, saveBtn));
-		return table;
+		card.appendChild(E('div', { 'class': 'wac-actions', 'style': 'margin-top:10px' }, saveBtn));
+		return card;
+	},
+
+	updateSettingsCard: function (st) {
+		/* живое обновление значений полей, если пользователь их не редактирует */
+		var el = function (id) { return document.getElementById(id); };
+		var en = el('wac-enabled'), iv = el('wac-interval'), ifc = el('wac-iface'), rt = el('wac-retries');
+		if (!en || !iv || !ifc || !rt) { this.replaceCard('_settingsCard', this.renderSettings(st)); return; }
+		en.checked = !!st.enabled;
+		if (iv.value === '') iv.value = String(st.interval || 6);
+		if (ifc.value === '') ifc.value = st.interface || 'warp';
+		rt.value = String(st.retries || 2);
 	},
 
 	renderLog: function () {
 		var self = this;
 		var pre = E('pre', { 'class': 'wac-log' }, 'Загрузка…');
-		rpcLog().then(function (res) {
-			pre.textContent = (res && res.content) || '(пусто)';
-		}).catch(function () {
-			pre.textContent = 'Не удалось получить лог';
-		});
+		this._logPre = pre;
+		this.refreshLog();
 		var btn = E('button', {
 			'class': 'btn cbi-button',
-			'click': ui.createHandlerFn(self, function () {
-				return rpcLog().then(function (res) { pre.textContent = (res && res.content) || '(пусто)'; });
-			})
+			'click': ui.createHandlerFn(self, function () { return self.refreshLog(); })
 		}, 'Обновить лог');
 		return E('div', { 'class': 'wac-card' }, [
 			E('h3', {}, 'Лог'),
 			E('div', { 'class': 'wac-actions' }, btn),
 			pre
 		]);
+	},
+
+	refreshLog: function () {
+		var pre = this._logPre;
+		if (!pre) return Promise.resolve();
+		return rpcLog().then(function (res) {
+			pre.textContent = (res && res.content) || '(пусто)';
+		}).catch(function () {
+			pre.textContent = 'Не удалось получить лог';
+		});
 	},
 
 	handleSaveApply: function () { return Promise.resolve(); },

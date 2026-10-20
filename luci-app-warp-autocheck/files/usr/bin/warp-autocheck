@@ -223,6 +223,14 @@ iface_check() { # iface -> stdout "result|detail"
 
 cmd_check() {
 	local conf iface res detail fails now ts
+	local prev_held="$WAC_LOCK_HELD"
+	if ! acquire_lock; then
+		printf '{"result":"busy","detail":"операция уже выполняется"}\n'
+		return 0
+	fi
+	local fresh=0
+	[ "$WAC_LOCK_HELD" = "1" ] && [ "$prev_held" != "1" ] && fresh=1
+
 	conf=$(cfg_get conf 2>/dev/null); [ -n "$conf" ] || conf="/root/WARP.conf"
 	[ -n "$WAC_CONF_OVERRIDE" ] && conf="$WAC_CONF_OVERRIDE"
 	iface=$(cfg_get interface 2>/dev/null); [ -n "$iface" ] || iface="warp"
@@ -252,6 +260,8 @@ cmd_check() {
 
 	log "check: $res ($detail), fails=$fails"
 	printf '{"result":"%s","detail":"%s","fails":%s}\n' "$(esc "$res")" "$(esc "$detail")" "$fails"
+	[ "$fresh" = "1" ] && release_lock
+	return 0
 }
 
 # --- генерация с подбором ---------------------------------------------------
