@@ -81,6 +81,17 @@ if src.index("leftCol") < src.index("rightCol") and "leftCol" in src:
 else:
     fail("view: настройки слева, статус справа")
 
+# (h) тумблер автопроверки в «Действиях»: зелёная «Включить» / красная «Выключить», чекбокса больше нет
+if ("'Выключить'" in src and "'Включить'" in src
+        and "cbi-button-negative' : 'cbi-button-positive'" in src.replace('"', "'")):
+    ok("view: тумблер вкл/выкл в действиях")
+else:
+    fail("view: тумблер вкл/выкл в действиях")
+if "wac-enabled" not in src:
+    ok("view: чекбокс из настроек убран")
+else:
+    fail("view: чекбокс из настроек убран")
+
 failed = [c for c in checks if c[0] == "FAIL"]
 for st, msg in checks:
     print("  %s - %s" % (st, msg))

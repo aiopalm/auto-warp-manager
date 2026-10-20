@@ -20,10 +20,13 @@ var CSS = [
 	'@media (max-width: 900px) { .wac-grid { grid-template-columns: 1fr } }',
 	'.wac-card { background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.25); border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; }',
 	'.wac-card h3 { margin: 0 0 10px 0; font-size: 1.05rem; }',
-	'.wac-row { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,.18); }',
+	'.wac-row { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,.18); flex-wrap: wrap; }',
 	'.wac-row:last-child { border-bottom: 0 }',
-	'.wac-key { width: 220px; min-width: 140px; opacity: .65; flex-shrink: 0 }',
-	'.wac-val { word-break: break-word; overflow-wrap: anywhere }',
+	'.wac-key { width: 200px; min-width: 140px; opacity: .65; flex-shrink: 0 }',
+	'.wac-val { flex: 1; min-width: 0; word-break: break-word; overflow-wrap: anywhere }',
+	'.wac-val .wac-input, .wac-val select, .wac-val input { max-width: 100%; box-sizing: border-box }',
+	'.wac-col { min-width: 0; display: flex; flex-direction: column }',
+	'.wac-col .wac-card:last-child { flex: 1; margin-bottom: 0 }',
 	'.wac-badge { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; color: #fff; background: #888; }',
 	'.wac-badge.wac-ok { background: #2e9e44 }',
 	'.wac-badge.wac-warn { background: #d09a2e }',
@@ -195,9 +198,30 @@ return view.extend({
 				}).then(function (ok) { return ok ? self.runAction(rpcRegen, 'Генерируем WARP с проверкой') : undefined; });
 			})
 		}, 'Заменить сейчас');
+		/* вкл/выкл автопроверки — зелёная «Включить» либо красная «Выключить» */
+		var toggleBtn = E('button', {
+			'class': 'btn cbi-button ' + (s.enabled ? 'cbi-button-negative' : 'cbi-button-positive'),
+			'disabled': busy ? '' : null,
+			'click': ui.createHandlerFn(self, function () {
+				var newVal = s.enabled ? '0' : '1';
+				var iv = document.getElementById('wac-interval');
+				var ifc = document.getElementById('wac-iface');
+				var rt = document.getElementById('wac-retries');
+				var interval = iv ? (parseInt(iv.value, 10) || 6) : (this._settings ? this._settings.interval : 6);
+				var iface = ifc ? (ifc.value || 'warp').trim() : (this._settings ? this._settings.interface : 'warp');
+				var retries = rt ? (parseInt(rt.value, 10) || 0) : (this._settings ? this._settings.retries : 2);
+				return rpcSetSettings(newVal, String(interval), iface, String(retries)).then(function (res) {
+					if (res && res.error) {
+						ui.addNotification(null, E('p', {}, res.error), 'error');
+						return;
+					}
+					return self.refreshAll();
+				});
+			})
+		}, s.enabled ? 'Выключить' : 'Включить');
 		return E('div', { 'class': 'wac-card' }, [
 			E('h3', {}, 'Действия'),
-			E('div', { 'class': 'wac-actions' }, [checkBtn, regenBtn])
+			E('div', { 'class': 'wac-actions' }, [toggleBtn, checkBtn, regenBtn])
 		]);
 	},
 
@@ -239,15 +263,13 @@ return view.extend({
 
 	renderSettings: function (st) {
 		var self = this;
-		var enabled = E('input', { 'id': 'wac-enabled', 'type': 'checkbox', 'checked': st.enabled ? '' : null });
-		var interval = E('input', { 'class': 'wac-input', 'id': 'wac-interval', 'type': 'number', 'min': '1', 'max': '168', 'value': String(st.interval || 6), 'style': 'width:6em' });
+		var interval = E('input', { 'class': 'wac-input', 'id': 'wac-interval', 'type': 'number', 'min': '1', 'max': '168', 'value': String(st.interval || 6), 'style': 'width:7em' });
 		var iface = E('input', { 'class': 'wac-input', 'id': 'wac-iface', 'type': 'text', 'value': st.interface || 'warp', 'style': 'width:12em' });
 		var retries = E('select', { 'class': 'wac-input', 'id': 'wac-retries' }, [0, 1, 2, 3].map(function (n) {
 			return E('option', { 'value': String(n), 'selected': (st.retries || 2) === n ? '' : null }, String(n));
 		}));
 
 		var card = E('div', { 'class': 'wac-card' }, [E('h3', {}, 'Настройки автопроверки')]);
-		card.appendChild(row(E('label', {}, [enabled, ' Автопроверка включена']), E('span')));
 		card.appendChild(row('Интервал, часов', [interval, E('div', { 'class': 'wac-hint' }, 'Раз в N часов проверять WARP (1–168)')]));
 		card.appendChild(row('Интерфейс AmneziaWG', [iface, E('div', { 'class': 'wac-hint' }, 'Имя интерфейса, соответствующего WARP.conf')]));
 		card.appendChild(row('Повторных проверок', [retries, E('div', { 'class': 'wac-hint' }, 'Сколько раз перепроверить перед заменой (0–3), пауза 5 минут')]));
@@ -255,10 +277,9 @@ return view.extend({
 		var saveBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-positive important',
 			'click': ui.createHandlerFn(self, function () {
-				var enabledVal = enabled.checked ? 1 : 0;
 				var intervalVal = parseInt(interval.value, 10) || 0;
 				var retriesVal = parseInt(retries.value, 10) || 0;
-				return rpcSetSettings(String(enabledVal), String(intervalVal), (iface.value || '').trim(), String(retriesVal)).then(function (res) {
+				return rpcSetSettings(String(st.enabled ? 1 : 0), String(intervalVal), (iface.value || '').trim(), String(retriesVal)).then(function (res) {
 					if (res && res.error) {
 						ui.addNotification(null, E('p', {}, res.error), 'error');
 						return;
@@ -275,9 +296,8 @@ return view.extend({
 	updateSettingsCard: function (st) {
 		/* живое обновление значений полей, если пользователь их не редактирует */
 		var el = function (id) { return document.getElementById(id); };
-		var en = el('wac-enabled'), iv = el('wac-interval'), ifc = el('wac-iface'), rt = el('wac-retries');
-		if (!en || !iv || !ifc || !rt) { this.replaceCard('_settingsCard', this.renderSettings(st)); return; }
-		en.checked = !!st.enabled;
+		var iv = el('wac-interval'), ifc = el('wac-iface'), rt = el('wac-retries');
+		if (!iv || !ifc || !rt) { this.replaceCard('_settingsCard', this.renderSettings(st)); return; }
 		if (iv.value === '') iv.value = String(st.interval || 6);
 		if (ifc.value === '') ifc.value = st.interface || 'warp';
 		rt.value = String(st.retries || 2);
