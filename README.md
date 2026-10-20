@@ -21,10 +21,12 @@
 
 ### Быстро с гита (на роутере, под root)
 
-Если на роутере есть curl (с Zapret Manager он ставится всегда):
+Если на роутере есть curl (с Zapret Manager он ставится всегда). Параметр
+`?v=…` нужен, чтобы обойти 5-минутный кэш CDN у raw.githubusercontent —
+иначе после пуша можно получить старую версию:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh | sh
+curl -fsSL "https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh?v=$(date +%s)" | sh
 ```
 
 Если curl нет — вариант с wget (на некоторых прошивках busybox-wget не умеет
@@ -32,7 +34,7 @@ HTTPS и молча ничего не ставит; если команда «м
 оно):
 
 ```
-wget -qO - https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh | sh
+wget -qO - "https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh?v=$(date +%s)" | sh
 ```
 
 ### Через ipk
@@ -52,16 +54,17 @@ cd auto-warp-manager
 
 ## Обновление
 
-Та же одна строка, что и при установке (curl-вариант) — файлы пакета
-перезапишутся свежими из репозитория, ваши настройки
+Та же одна строка, что и при установке (curl-вариант, с cache-busting) —
+файлы пакета перезапишутся свежими из репозитория, ваши настройки
 (`/etc/config/warp-autocheck`) сохранятся:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh | sh
+curl -fsSL "https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh?v=$(date +%s)" | sh
 ```
 
 После обновления обнови вкладку браузера с сбросом кэша: Ctrl+Shift+R
 (Cmd+Shift+R на Маке) — LuCI агрессивно кэширует JS страницы.
+Проверить, что на роутере свежий файл: `grep -c wac-badge /www/luci-static/resources/view/warp-autocheck/main.js` (должно быть > 0).
 
 Если ставили через ipk — скачайте/пересоберите свежий ipk и поставьте
 поверх: `opkg install --force-reinstall /tmp/luci-app-warp-autocheck_*.ipk`.
@@ -73,7 +76,7 @@ curl -fsSL https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/inst
 остаются как были:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh | sh -s --uninstall
+curl -fsSL "https://raw.githubusercontent.com/aiopalm/auto-warp-manager/main/install.sh?v=$(date +%s)" | sh -s --uninstall
 ```
 
 ## Как работает
