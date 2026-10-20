@@ -15,22 +15,22 @@ var STYLES_ID = 'wac-styles';
 
 var CSS = [
 	'.wac-wrap { max-width: 860px; }',
-	'.wac-card { background: var(--background-color, #fff); border: 1px solid var(--border-color, rgba(0,0,0,.12)); border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; }',
+	'.wac-card { background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.25); border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; }',
 	'.wac-card h3 { margin: 0 0 10px 0; font-size: 1.05rem; }',
-	'.wac-row { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--border-color, rgba(0,0,0,.06)); }',
+	'.wac-row { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; border-bottom: 1px solid rgba(127,127,127,.18); }',
 	'.wac-row:last-child { border-bottom: 0 }',
-	'.wac-key { width: 220px; min-width: 160px; color: var(--text-muted, #666); flex-shrink: 0 }',
+	'.wac-key { width: 220px; min-width: 160px; opacity: .65; flex-shrink: 0 }',
 	'.wac-val { word-break: break-word; overflow-wrap: anywhere }',
 	'.wac-badge { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; color: #fff; background: #888; }',
 	'.wac-badge.wac-ok { background: #2e9e44 }',
 	'.wac-badge.wac-warn { background: #d09a2e }',
 	'.wac-badge.wac-bad { background: #c9302c }',
 	'.wac-badge.wac-mute { background: #7f8c9b }',
-	'.wac-alert { border-left: 4px solid #c9302c; padding: 10px 14px; border-radius: 4px; background: rgba(201,48,44,.08); }',
+	'.wac-alert { border-left: 4px solid #c9302c; padding: 10px 14px; border-radius: 4px; background: rgba(201,48,44,.14); }',
 	'.wac-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }',
-	'.wac-log { max-height: 300px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; background: var(--background-color-high, rgba(0,0,0,.04)); padding: 10px; border-radius: 4px; margin-top: 8px; }',
-	'.wac-input { padding: 3px 8px; }',
-	'.wac-hint { font-size: 12px; color: var(--text-muted, #777); margin-top: 2px }'
+	'.wac-log { max-height: 300px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; background: rgba(127,127,127,.12); padding: 10px; border-radius: 4px; margin-top: 8px; }',
+	'.wac-input { padding: 3px 8px; background: rgba(127,127,127,.1); border: 1px solid rgba(127,127,127,.3); border-radius: 4px; color: inherit }',
+	'.wac-hint { font-size: 12px; opacity: .6; margin-top: 2px }'
 ].join('\n');
 
 function ensureStyles() {
