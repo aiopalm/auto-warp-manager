@@ -8,9 +8,38 @@ var rpcCheck = rpc.declare({ object: 'luci.warp-autocheck', method: 'check' });
 var rpcRegen = rpc.declare({ object: 'luci.warp-autocheck', method: 'regen' });
 var rpcLog = rpc.declare({ object: 'luci.warp-autocheck', method: 'log' });
 var rpcGetSettings = rpc.declare({ object: 'luci.warp-autocheck', method: 'get_settings' });
-var rpcSetSettings = rpc.declare({ object: 'luci.warp-autocheck', method: 'set_settings' });
+var rpcSetSettings = rpc.declare({ object: 'luci.warp-autocheck', method: 'set_settings', params: ['enabled', 'interval', 'interface', 'retries'] });
 
 var pollTimer = null;
+var STYLES_ID = 'wac-styles';
+
+var CSS = [
+	'.wac-wrap { max-width: 860px; }',
+	'.wac-card { background: var(--background-color, #fff); border: 1px solid var(--border-color, rgba(0,0,0,.12)); border-radius: 6px; padding: 14px 18px; margin-bottom: 14px; }',
+	'.wac-card h3 { margin: 0 0 10px 0; font-size: 1.05rem; }',
+	'.wac-row { display: flex; align-items: baseline; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--border-color, rgba(0,0,0,.06)); }',
+	'.wac-row:last-child { border-bottom: 0 }',
+	'.wac-key { width: 220px; min-width: 160px; color: var(--text-muted, #666); flex-shrink: 0 }',
+	'.wac-val { word-break: break-word; overflow-wrap: anywhere }',
+	'.wac-badge { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; color: #fff; background: #888; }',
+	'.wac-badge.wac-ok { background: #2e9e44 }',
+	'.wac-badge.wac-warn { background: #d09a2e }',
+	'.wac-badge.wac-bad { background: #c9302c }',
+	'.wac-badge.wac-mute { background: #7f8c9b }',
+	'.wac-alert { border-left: 4px solid #c9302c; padding: 10px 14px; border-radius: 4px; background: rgba(201,48,44,.08); }',
+	'.wac-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }',
+	'.wac-log { max-height: 300px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; background: var(--background-color-high, rgba(0,0,0,.04)); padding: 10px; border-radius: 4px; margin-top: 8px; }',
+	'.wac-input { padding: 3px 8px; }',
+	'.wac-hint { font-size: 12px; color: var(--text-muted, #777); margin-top: 2px }'
+].join('\n');
+
+function ensureStyles() {
+	if (document.getElementById(STYLES_ID)) return;
+	var s = document.createElement('style');
+	s.id = STYLES_ID;
+	s.textContent = CSS;
+	document.head.appendChild(s);
+}
 
 function fmtTime(ts) {
 	if (!ts || ts === 0) return '—';
@@ -20,105 +49,107 @@ function fmtTime(ts) {
 
 function resultBadge(res) {
 	var map = {
-		ok:        ['success', 'работает'],
-		'replaced': ['success', 'заменён и работает'],
-		'no-link': ['danger', 'нет связи'],
-		torn:      ['warning', 'обрывается (DPI)'],
-		'ru-colo': ['warning', 'российский узел'],
-		'no-iface': ['danger', 'интерфейс не найден'],
-		'manual-off': ['muted', 'выключен вручную'],
-		'wan-down': ['muted', 'сеть недоступна'],
-		'no-conf': ['danger', 'конфиг не найден'],
-		'not-helped': ['warning', 'замена не помогла'],
-		'regen-failed': ['danger', 'регенерация не удалась'],
-		'rolled-back': ['warning', 'заменён и откачен'],
-		none: ['muted', 'ещё не проверялся']
+		ok:           ['wac-ok',   'работает'],
+		'replaced':   ['wac-ok',   'заменён и работает'],
+		'no-link':    ['wac-bad',  'нет связи'],
+		torn:         ['wac-warn', 'обрывается (DPI)'],
+		'ru-colo':    ['wac-warn', 'российский узел'],
+		'no-iface':   ['wac-bad',  'интерфейс не найден'],
+		'manual-off': ['wac-mute', 'выключен вручную'],
+		'wan-down':   ['wac-mute', 'сеть недоступна'],
+		'no-conf':    ['wac-bad',  'конфиг не найден'],
+		'not-helped': ['wac-warn', 'замена не помогла'],
+		'regen-failed': ['wac-bad', 'регенерация не удалась'],
+		'rolled-back':  ['wac-warn', 'заменён и откачен'],
+		none:         ['wac-mute', 'ещё не проверялся']
 	};
-	var m = map[res] || ['muted', res || '—'];
-	return E('span', { 'class': 'label label-' + m[0] }, m[1]);
+	var m = map[res] || ['wac-mute', res || '—'];
+	return E('span', { 'class': 'wac-badge ' + m[0] }, m[1]);
+}
+
+function row(key, val) {
+	return E('div', { 'class': 'wac-row' }, [
+		E('div', { 'class': 'wac-key' }, key),
+		E('div', { 'class': 'wac-val' }, val)
+	]);
 }
 
 return view.extend({
-	handleSaveApply: null,
-
 	load: function () {
 		return Promise.all([rpcStatus(), rpcGetSettings()]);
 	},
 
 	render: function (data) {
+		ensureStyles();
 		var status = data[0] || {};
 		var settings = data[1] || {};
-		var container = E('div', { 'class': 'cbi-map' });
 		var self = this;
+		this._status = status;
+		this._settings = settings;
+
+		var wrap = E('div', { 'class': 'wac-wrap' });
 
 		if (!status.conf_exists) {
-			container.appendChild(E('div', { 'class': 'cbi-map' }, [
+			wrap.appendChild(E('div', { 'class': 'wac-card' }, [
 				E('h3', {}, 'WARP AutoCheck'),
-				E('div', { 'class': 'alert-message danger' },
+				E('div', { 'class': 'wac-alert' },
 					'WARP-конфиг не найден (/root/WARP.conf). Сгенерируйте WARP-конфиг в Zapret Manager (раздел AmneziaWG) и импортируйте его как интерфейс.'
 				)
 			]));
-			return container;
+			return wrap;
 		}
 
-		container.appendChild(this.renderStatus(status));
-		container.appendChild(this.renderActions(status));
-		container.appendChild(this.renderSettings(settings));
-		container.appendChild(this.renderLog());
+		wrap.appendChild(this.renderStatus(status));
+		wrap.appendChild(this.renderActions(status));
+		wrap.appendChild(this.renderSettings(settings));
+		wrap.appendChild(this.renderLog());
 
 		this.startPolling(status.running);
-		return container;
+		return wrap;
 	},
 
 	renderStatus: function (s) {
-		var rows = [
-			_('WARP.conf'), s.conf_exists ? _('есть') : _('нет'),
-			_('Интерфейс'), (s.iface_exists ? (s.iface || 'warp') + (s.iface_manual_off ? ' (' + _('выключен вручную') + ')' : '') : _('не найден')),
-			_('Точка входа'), s.endpoint || '—',
-			_('Рукопожатие'), s.hs_age != null ? (s.hs_age < 180 ? _('%d сек назад').format(s.hs_age) : _('старше 3 минут — туннель не отвечает')) : '—',
-			_('Последняя проверка'), fmtTime(s.last_check) + ' — ' + resultBadge(s.last_result) + (s.last_detail ? ' (' + s.last_detail + ')' : ''),
-			_('Последняя замена'), s.last_replace ? fmtTime(s.last_replace) : _('не было'),
-			_('Автопроверка'), s.enabled ? _('включена, каждые %d ч').format(s.interval) : _('выключена')
-		];
-		var table = E('table', { 'class': 'table' });
-		for (var i = 0; i < rows.length; i += 2) {
-			table.appendChild(E('tr', {}, [
-				E('td', { 'style': 'width:33%' }, '' + rows[i]),
-				E('td', {}, E('strong', {}, '' + rows[i + 1]))
-			]));
+		var hsTxt = '—';
+		if (s.hs_age != null) {
+			hsTxt = s.hs_age < 180 ? (s.hs_age + ' сек назад') : 'старше 3 минут — туннель не отвечает';
 		}
-		return E('div', { 'class': 'cbi-map' }, [
-			E('h3', {}, _('Статус')),
-			table
+		return E('div', { 'class': 'wac-card' }, [
+			E('h3', {}, 'Статус'),
+			row('WARP.conf', s.conf_exists ? 'есть' : 'нет'),
+			row('Интерфейс', s.iface_exists ? (s.iface || 'warp') + (s.iface_manual_off ? ' (выключен вручную)' : '') : 'не найден'),
+			row('Точка входа', s.endpoint || '—'),
+			row('Рукопожатие', hsTxt),
+			row('Последняя проверка', fmtTime(s.last_check) + ' ', resultBadge(s.last_result), s.last_detail ? E('span', { 'class': 'wac-hint' }, ' ' + s.last_detail) : E('span')),
+			row('Последняя замена', s.last_replace ? fmtTime(s.last_replace) : 'не было'),
+			row('Автопроверка', s.enabled ? ('включена, каждые ' + s.interval + ' ч') : 'выключена')
 		]);
 	},
 
 	renderActions: function (s) {
 		var self = this;
 		var busy = !!s.running;
-		var box = E('div', { 'class': 'cbi-page-actions' });
 		var checkBtn = E('button', {
-			'class': 'btn cbi-button cbi-button-action',
+			'class': 'btn cbi-button cbi-button-positive',
 			'disabled': busy ? '' : null,
 			'click': ui.createHandlerFn(self, function () { return self.runAction(rpcCheck, 'Проверяем WARP'); })
-		}, _('Проверить сейчас'));
+		}, 'Проверить сейчас');
 		var regenBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-negative',
 			'disabled': busy ? '' : null,
 			'click': ui.createHandlerFn(self, function () {
 				return new Promise(function (resolve) {
-					ui.showModal(_('Заменить WARP-конфиг?'), E('p', {},
-						_('Роутер получит новые ключи WARP, переберёт точки входа и запишет рабочую связку в /root/WARP.conf. Это займёт до 10 минут, туннель переподнимется.')), [
-						E('button', { 'class': 'btn', 'click': function () { ui.hideModal(); resolve(null); } }, _('Отмена')),
-						E('button', { 'class': 'btn cbi-button-negative important', 'click': function () { ui.hideModal(); resolve(true); } }, _('Заменить'))
+					ui.showModal('Заменить WARP-конфиг?', E('p', {},
+						'Роутер получит новые ключи WARP, переберёт точки входа и запишет рабочую связку в /root/WARP.conf. Это займёт до 10 минут, туннель переподнимется.'), [
+						E('button', { 'class': 'btn', 'click': function () { ui.hideModal(); resolve(null); } }, 'Отмена'),
+						E('button', { 'class': 'btn cbi-button-negative important', 'click': function () { ui.hideModal(); resolve(true); } }, 'Заменить')
 					]);
 				}).then(function (ok) { return ok ? self.runAction(rpcRegen, 'Генерируем WARP с проверкой') : undefined; });
 			})
-		}, _('Заменить сейчас'));
-		box.appendChild(checkBtn);
-		box.appendChild(E('span', { 'style': 'margin-right:1em' }));
-		box.appendChild(regenBtn);
-		return E('div', { 'class': 'cbi-map' }, [E('h3', {}, _('Действия')), box]);
+		}, 'Заменить сейчас');
+		return E('div', { 'class': 'wac-card' }, [
+			E('h3', {}, 'Действия'),
+			E('div', { 'class': 'wac-actions' }, [checkBtn, regenBtn])
+		]);
 	},
 
 	runAction: function (fn, busyText) {
@@ -130,11 +161,11 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, res.error), 'error');
 				return;
 			}
-			ui.addNotification(null, E('p', {}, _('Операция запущена — следите за статусом')), 'info');
+			ui.addNotification(null, E('p', {}, 'Операция запущена — следите за статусом'), 'info');
 			self.startPolling(true);
-		}).catch(function (e) {
+		}).catch(function () {
 			ui.hideIndicator();
-			ui.addNotification(null, E('p', {}, _('Роутер не ответил')), 'error');
+			ui.addNotification(null, E('p', {}, 'Роутер не ответил'), 'error');
 		});
 	},
 
@@ -147,41 +178,28 @@ return view.extend({
 				if (s && s.running) {
 					pollTimer = setTimeout(tick, 3000);
 				} else {
-					ui.addNotification(null, E('p', {}, _('Операция завершена')), 'info');
-					self.redraw();
+					ui.addNotification(null, E('p', {}, 'Операция завершена — обновляем страницу'), 'info');
+					window.location.reload();
 				}
 			});
 		};
 		pollTimer = setTimeout(tick, 3000);
 	},
 
-	redraw: function () {
-		// LuCI-view перерисовка: надёжнее перезагрузить страницу после долгой операции
-		window.location.reload();
-	},
-
 	renderSettings: function (st) {
 		var self = this;
-		var box = E('div', { 'class': 'cbi-map' }, [E('h3', {}, _('Настройки автопроверки'))]);
-		var table = E('table', { 'class': 'table' });
-
 		var enabled = E('input', { 'type': 'checkbox', 'checked': st.enabled ? '' : null });
-		var interval = E('input', { 'type': 'number', 'min': '1', 'max': '168', 'value': String(st.interval || 6), 'style': 'width:6em' });
-		var iface = E('input', { 'type': 'text', 'value': st.interface || 'warp', 'style': 'width:12em' });
-		var retries = E('select', {}, [0, 1, 2, 3].map(function (n) {
+		var interval = E('input', { 'class': 'wac-input', 'type': 'number', 'min': '1', 'max': '168', 'value': String(st.interval || 6), 'style': 'width:6em' });
+		var iface = E('input', { 'class': 'wac-input', 'type': 'text', 'value': st.interface || 'warp', 'style': 'width:12em' });
+		var retries = E('select', { 'class': 'wac-input' }, [0, 1, 2, 3].map(function (n) {
 			return E('option', { 'value': String(n), 'selected': (st.retries || 2) === n ? '' : null }, String(n));
 		}));
 
-		var addRow = function (label, control, hint) {
-			table.appendChild(E('tr', {}, [
-				E('td', { 'style': 'width:33%' }, label),
-				E('td', {}, [control, hint ? E('div', { 'class': 'cbi-value-description' }, hint) : E('span')])
-			]));
-		};
-		addRow(_('Автопроверка включена'), enabled);
-		addRow(_('Интервал, часов'), interval, _('Раз в N часов проверять WARP (1–168)'));
-		addRow(_('Интерфейс AmneziaWG'), iface, _('Имя интерфейса, соответствующего WARP.conf'));
-		addRow(_('Повторных проверок'), retries, _('Сколько раз перепроверить перед заменой (0–3), пауза 5 минут'));
+		var table = E('div', { 'class': 'wac-card' }, [E('h3', {}, 'Настройки автопроверки')]);
+		table.appendChild(row(E('label', {}, [enabled, ' Автопроверка включена']), E('span')));
+		table.appendChild(row('Интервал, часов', [interval, E('div', { 'class': 'wac-hint' }, 'Раз в N часов проверять WARP (1–168)')]));
+		table.appendChild(row('Интерфейс AmneziaWG', [iface, E('div', { 'class': 'wac-hint' }, 'Имя интерфейса, соответствующего WARP.conf')]));
+		table.appendChild(row('Повторных проверок', [retries, E('div', { 'class': 'wac-hint' }, 'Сколько раз перепроверить перед заменой (0–3), пауза 5 минут')]));
 
 		var saveBtn = E('button', {
 			'class': 'btn cbi-button cbi-button-positive important',
@@ -194,35 +212,32 @@ return view.extend({
 						ui.addNotification(null, E('p', {}, res.error), 'error');
 						return;
 					}
-					ui.addNotification(null, E('p', {}, _('Настройки сохранены')), 'info');
-					setTimeout(function () { self.redraw(); }, 500);
+					ui.addNotification(null, E('p', {}, 'Настройки сохранены'), 'info');
+					setTimeout(function () { window.location.reload(); }, 500);
 				});
 			})
-		}, _('Сохранить'));
-
-		box.appendChild(table);
-		box.appendChild(E('div', { 'class': 'cbi-page-actions' }, saveBtn));
-		return box;
+		}, 'Сохранить');
+		table.appendChild(E('div', { 'class': 'wac-actions', 'style': 'margin-top:10px' }, saveBtn));
+		return table;
 	},
 
 	renderLog: function () {
 		var self = this;
-		var pre = E('pre', { 'class': 'cbi-map', 'style': 'max-height:300px; overflow:auto; font-size:12px' }, _('Загрузка…'));
+		var pre = E('pre', { 'class': 'wac-log' }, 'Загрузка…');
 		rpcLog().then(function (res) {
-			var content = (res && res.content) || '(пусто)';
-			pre.textContent = content;
+			pre.textContent = (res && res.content) || '(пусто)';
 		}).catch(function () {
-			pre.textContent = _('Не удалось получить лог');
+			pre.textContent = 'Не удалось получить лог';
 		});
 		var btn = E('button', {
 			'class': 'btn cbi-button',
 			'click': ui.createHandlerFn(self, function () {
 				return rpcLog().then(function (res) { pre.textContent = (res && res.content) || '(пусто)'; });
 			})
-		}, _('Обновить лог'));
-		return E('div', { 'class': 'cbi-map' }, [
-			E('h3', {}, _('Лог')),
-			btn,
+		}, 'Обновить лог');
+		return E('div', { 'class': 'wac-card' }, [
+			E('h3', {}, 'Лог'),
+			E('div', { 'class': 'wac-actions' }, btn),
 			pre
 		]);
 	},

@@ -22,6 +22,12 @@ for m in ["status", "check", "regen", "log", "get_settings", "set_settings"]:
     else:
         fail("view: метод %s объявлен" % m)
 
+# (a2) set_settings объявлен с именованными параметрами (иначе rpcd получает массив)
+if re.search(r"method:\s*'set_settings',\s*params:\s*\[", src):
+    ok("view: set_settings с params")
+else:
+    fail("view: set_settings с params (rpcd получит безымянный массив)")
+
 # (b) ошибка при отсутствии WARP.conf
 if "Сгенерируйте WARP-конфиг в Zapret Manager" in src:
     ok("view: ошибка отсутствия конфига")
@@ -34,11 +40,15 @@ if ("showModal" in src or "confirm" in src) and "Заменить" in src:
 else:
     fail("view: confirm замены")
 
-# (d) опрос статуса во время операции
+# (d) опрос статуса + собственные стили (не зависят от темы)
 if re.search(r"poll|setTimeout|requestAnimationFrame", src):
     ok("view: polling статуса")
 else:
     fail("view: polling статуса")
+if "ensureStyles" in src and "wac-styles" in src and ".wac-badge" in src:
+    ok("view: собственные стили внедряются")
+else:
+    fail("view: собственные стили внедряются")
 
 # (e) node --check
 r = subprocess.run(["node", "--check", VIEW], capture_output=True, text=True)
